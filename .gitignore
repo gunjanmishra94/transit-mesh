@@ -1,0 +1,10 @@
+.env
+duckdb_data/*.duckdb
+dbt_transit/target/
+dbt_transit/logs/
+dbt_transit/dbt_packages/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
