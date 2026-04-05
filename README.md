@@ -10,11 +10,14 @@ DuckDB · dbt-duckdb · Dagster · Streamlit (PyDeck + Plotly)
 
 ## Setup
 
+Requires [uv](https://docs.astral.sh/uv/).
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+uv sync
 cp .env.example .env
 ```
+
+Run scripts with `uv run python ingestion/fetch_static_gtfs.py`, etc.
 
 ## Data sources (all public, no registration — see `project_blueprint.md` §2)
 

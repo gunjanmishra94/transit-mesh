@@ -6,18 +6,18 @@ Staged implementation plan derived from `project_blueprint.md`. Work top to bott
 
 ## Phase 0 — Repo Scaffolding
 
-- [ ] Init project structure per blueprint §3 (Directory Structure): `ingestion/`, `dbt_transit/`, `orchestrator/`, `app/`, `duckdb_data/`
-- [ ] `pyproject.toml` with deps: `duckdb`, `dbt-duckdb`, `dagster`, `dagster-webserver`, `streamlit`, `pydeck`, `plotly`, `requests`, `gtfs-realtime-bindings`
-- [ ] `.env` + `.env.example` (DB path, any config — no API keys needed per §2 sourcing constraint)
-- [ ] `README.md` with setup/run instructions
-- [ ] `.gitignore` (`duckdb_data/`, `.env`, `dbt_transit/target/`, `dbt_transit/logs/`)
-- [ ] Initialize git repo, first commit
+- [x] Init project structure per blueprint §3 (Directory Structure): `ingestion/`, `dbt_transit/`, `orchestrator/`, `app/`, `duckdb_data/`
+- [x] `pyproject.toml` with deps: `duckdb`, `dbt-duckdb`, `dagster`, `dagster-webserver`, `streamlit`, `pydeck`, `plotly`, `requests`, `gtfs-realtime-bindings` (managed with `uv`, see `uv.lock`)
+- [x] `.env` + `.env.example` (DB path, any config — no API keys needed per §2 sourcing constraint)
+- [x] `README.md` with setup/run instructions
+- [x] `.gitignore` (`duckdb_data/`, `.env`, `dbt_transit/target/`, `dbt_transit/logs/`)
+- [x] Initialize git repo, first commit
 
 ## Phase 1 — Static Nationwide Baseline (do this before realtime)
 
 Static GTFS is the structural backbone for "every place in Germany" — build this first so downstream models have a complete stop/route/agency universe even before realtime data flows.
 
-- [ ] `ingestion/fetch_static_gtfs.py` — download `https://download.gtfs.de/germany/free/latest.zip`, unzip, bulk-load `stops.txt`, `routes.txt`, `trips.txt`, `calendar.txt`, `agency.txt` into DuckDB raw tables
+- [x] `ingestion/fetch_static_gtfs.py` — download `https://download.gtfs.de/germany/free/latest.zip`, unzip, bulk-load `stops.txt`, `routes.txt`, `trips.txt`, `calendar.txt`, `agency.txt` into DuckDB raw tables (verified live: 688K stops, 24.9K routes, 1.9M trips, 459 agencies)
 - [ ] `ingestion/fetch_admin_boundaries.py` — download BKG VG250 (Länder/Kreise/Gemeinden), load into a spatial reference table via DuckDB `spatial` extension
 - [ ] Point-in-polygon join: enrich `raw_stops` with `municipality_name` / `district_id` / `state_name` from VG250
 - [ ] Sanity check: row counts per Bundesland, confirm no state has zero stops
