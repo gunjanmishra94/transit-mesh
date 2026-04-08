@@ -19,8 +19,8 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 - [x] `ingestion/fetch_static_gtfs.py` — download `https://download.gtfs.de/germany/free/latest.zip`, unzip, bulk-load `stops.txt`, `routes.txt`, `trips.txt`, `calendar.txt`, `agency.txt` into DuckDB raw tables (verified live: 688K stops, 24.9K routes, 1.9M trips, 459 agencies)
 - [x] `ingestion/fetch_admin_boundaries.py` — download BKG VG250 (Länder/Kreise/Gemeinden), load into a spatial reference table via DuckDB `spatial` extension (verified live: 16 states, 401 districts, 10,939 municipalities; geom in EPSG:25832)
-- [ ] Point-in-polygon join: enrich `raw_stops` with `municipality_name` / `district_id` / `state_name` from VG250
-- [ ] Sanity check: row counts per Bundesland, confirm no state has zero stops
+- [x] Point-in-polygon join: enrich `raw_stops` with `municipality_name` / `district_id` / `state_name` from VG250 (`ingestion/enrich_stops_with_boundaries.py` → `stg_gtfs_stops_enriched`; 98.9% match rate, remainder are cross-border stops)
+- [x] Sanity check: row counts per Bundesland, confirm no state has zero stops (all 16 states represented, 2,656–135,699 stops each)
 - [ ] (Optional, later) `ingestion/fetch_regional_gtfs.py` for VVS/HVV/MVV/etc. static feeds to patch gaps — defer until Phase 1 baseline is validated
 
 ## Phase 2 — Realtime Ingestion
