@@ -25,10 +25,10 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 ## Phase 2 — Realtime Ingestion
 
-- [ ] `ingestion/fetch_rt.py` per blueprint §4.1 — poll `realtime-free.pb`, parse TripUpdates, write to `raw_trip_updates`
-- [ ] Extend parser for ServiceAlerts entities (feed includes them; blueprint's current code only handles trip_update)
-- [ ] Manual test run: confirm non-zero records ingested, spot-check against known routes (e.g. a Berlin or Munich line)
-- [ ] Add a `source_agency` / `feed_coverage_flag` column so downstream models can distinguish "no delay" from "no data"
+- [x] `ingestion/fetch_rt.py` per blueprint §4.1 — poll `realtime-free.pb`, parse TripUpdates, write to `raw_trip_updates` (rewritten: blueprint's `conn.register(list_of_dicts)` doesn't actually work on current DuckDB — fixed by building a `pandas.DataFrame` first)
+- [x] Extend parser for ServiceAlerts entities → `raw_service_alerts` (verified live: 43,250 alerts)
+- [x] Manual test run: confirmed live — 383,524 trip update events, 33,917 distinct trips, delays in a sane range (avg ~90s, min -7140s/max 11460s). **Finding: `route_id` is empty on every RT entity in this feed** — route/agency must be resolved downstream via a `trip_id` join against static `trips.txt`, not read off the RT feed directly.
+- [x] ~~Add a `source_agency` / `feed_coverage_flag` column~~ — superseded by the finding above: agency resolution and coverage tracking both happen downstream in dbt (`mrt_rt_coverage_by_agency`, Phase 3) via `trip_id → raw_gtfs_trips.route_id → raw_gtfs_routes.agency_id`, not as a column baked into raw ingestion. Added `feed_timestamp` (feed generation time) and `entity_id` instead, for staleness/dedup checks.
 
 ## Phase 3 — dbt Modeling
 
