@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: transit
+    schema: main
+    tables:
+      - name: raw_gtfs_agency
+      - name: raw_gtfs_routes
+      - name: raw_gtfs_trips
+      - name: raw_gtfs_calendar
+      - name: stg_gtfs_stops_enriched
+      - name: raw_trip_updates
+      - name: raw_service_alerts

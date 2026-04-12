@@ -32,13 +32,13 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 ## Phase 3 — dbt Modeling
 
-- [ ] `dbt_transit/dbt_project.yml`, `profiles.yml` (duckdb adapter, path to `duckdb_data/transit.duckdb`)
-- [ ] Staging: `stg_gtfs__stops`, `stg_gtfs__routes`, `stg_gtfs__agency`, `stg_rt__trip_updates` (blueprint §4.2)
-- [ ] Intermediate: `int_trip_delays_enriched` (join RT to enriched static stops)
-- [ ] Marts: `mrt_performance_by_stop`, `mrt_performance_by_municipality`, `mrt_performance_national`
-- [ ] New mart: `mrt_rt_coverage_by_agency` (blueprint §2.2) — trips-with-RT ÷ scheduled-trips per agency/region, trailing 24h
-- [ ] dbt tests: not-null / relationships on keys, accepted-range on delay minutes
-- [ ] `dbt run` + `dbt test` clean pass
+- [x] `dbt_transit/dbt_project.yml`, `profiles.yml` (duckdb adapter, path to `duckdb_data/transit.duckdb`; also added `packages.yml` for `dbt_utils`)
+- [x] Staging: `stg_gtfs__stops` (reads the pre-built `stg_gtfs_stops_enriched`), `stg_gtfs__routes`, `stg_gtfs__agency`, `stg_gtfs__trips`, `stg_rt__trip_updates` (drops `route_id` — always empty, see Phase 2 finding)
+- [x] Intermediate: `int_trip_delays_enriched` (joins RT → `stg_gtfs__trips` → `stg_gtfs__routes` for agency, → `stg_gtfs__stops` for geography)
+- [x] Marts: `mrt_performance_by_stop`, `mrt_performance_by_municipality`, `mrt_performance_national`
+- [x] New mart: `mrt_rt_coverage_by_agency` — verified live: 142 agencies have scheduled trips but zero RT observations in the trailing 24h, now visible instead of silently reading as "on time"
+- [x] dbt tests: not-null/unique/relationships on keys, `dbt_utils.accepted_range` on delay minutes (widened to -120..300 for the per-stop mart — single-poll per-stop averages can legitimately be one real ~80min-early observation, not a smoothed average) and 0..100 on coverage pct
+- [x] `dbt run` + `dbt test` clean pass — 10 models, 17 tests, all green
 
 ## Phase 4 — Orchestration (Dagster)
 

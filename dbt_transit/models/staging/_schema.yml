@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: stg_gtfs__agency
+    columns:
+      - name: agency_id
+        tests: [not_null, unique]
+
+  - name: stg_gtfs__routes
+    columns:
+      - name: route_id
+        tests: [not_null, unique]
+
+  - name: stg_gtfs__trips
+    columns:
+      - name: trip_id
+        tests: [not_null, unique]
+      - name: route_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_gtfs__routes')
+                field: route_id
+
+  - name: stg_gtfs__stops
+    columns:
+      - name: stop_id
+        tests: [not_null, unique]
+
+  - name: stg_rt__trip_updates
+    columns:
+      - name: trip_id
+        tests: [not_null]

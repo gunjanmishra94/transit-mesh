@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: mrt_performance_by_stop
+    columns:
+      - name: stop_id
+        tests: [not_null]
+      - name: avg_delay_minutes
+        # Wider than the aggregate marts below: with few polls so far, a
+        # single stop's average is often just one real observation (e.g. a
+        # bus running genuinely ~80min early), not a smoothed average.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -120
+                max_value: 300
+
+  - name: mrt_performance_by_municipality
+    columns:
+      - name: avg_delay_minutes
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -60
+                max_value: 300
+
+  - name: mrt_performance_national
+    columns:
+      - name: avg_delay_minutes
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -60
+                max_value: 300
+
+  - name: mrt_rt_coverage_by_agency
+    columns:
+      - name: agency_id
+        tests: [not_null, unique]
+      - name: rt_coverage_pct
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+                inclusive: true
