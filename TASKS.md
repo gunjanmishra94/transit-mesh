@@ -42,11 +42,11 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 ## Phase 4 — Orchestration (Dagster)
 
-- [ ] `orchestrator/definitions.py`: `raw_gtfs_rt_asset` (existing, every-minute schedule)
-- [ ] Add `static_gtfs_asset` (daily schedule)
-- [ ] Add `admin_boundaries_asset` (annual/manual trigger — VG250 updates infrequently)
-- [ ] Wire dbt run as a downstream asset dependency (dagster-dbt) after each ingestion asset completes
-- [ ] Verify Dagster UI shows correct asset graph and schedules fire independently
+- [x] `orchestrator/definitions.py`: `raw_gtfs_rt_asset` (multi-asset, outputs `raw_trip_updates` + `raw_service_alerts`), every-minute schedule
+- [x] Add `static_gtfs_asset` (multi-asset, 5 static tables), daily 03:00 schedule
+- [x] Add `admin_boundaries_asset` (multi-asset, 3 VG250 tables) + `stg_gtfs_stops_enriched_asset`, manual-trigger job (no cron — VG250 updates ~annually)
+- [x] Wire dbt run as a downstream asset dependency (dagster-dbt) — ingestion assets use `AssetKey(["transit", table])`, matching dagster-dbt's default key for dbt sources, so the whole graph (ingestion → staging → intermediate → marts) connects automatically; `@dbt_assets` runs `dbt build` (not `run`) so dbt tests execute as Dagster asset checks
+- [x] Verified: `dagster definitions validate` passes; full asset graph printed and confirmed wired correctly; `realtime_ingestion_job` and `static_gtfs_job` both executed end-to-end via `dagster job execute` (27/27 steps pass: 10 models + 17 tests-as-checks)
 
 ## Phase 5 — Streamlit App
 
