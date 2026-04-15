@@ -50,11 +50,11 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 ## Phase 5 — Streamlit App
 
-- [ ] `app/main.py` per blueprint §4.4 — state → district → municipality drill-down
-- [ ] Add coverage indicator (from `mrt_rt_coverage_by_agency`) so dark/no-data regions are visibly flagged, not shown as "0 delay"
-- [ ] PyDeck map layer for spatial view (blueprint mentions PyDeck 3D — not yet in the sample code, needs building)
-- [ ] Plotly time-series panel for delay trends
-- [ ] Manual smoke test: load app, click through all three drill-down levels, confirm no crashes on states with sparse data
+- [x] `app/main.py` per blueprint §4.4 — state → district → municipality drill-down (4 tabs: Map, Performance, Trends, Coverage)
+- [x] Add coverage indicator (from `mrt_rt_coverage_by_agency`) — warning banner up top + dedicated Coverage tab; also required adding `stop_lat`/`stop_lon`/`municipality_id` to `int_trip_delays_enriched` and the by_stop/by_municipality marts (municipality centroid computed from distinct stops, not observation-weighted)
+- [x] PyDeck map layer — municipality centroids nationwide, stop-level scatter when a state/district is selected, colored green→red by avg delay
+- [x] Plotly time-series panel — delay over polling history (`date_trunc('minute', ingested_at)`) for the current selection; degrades to a plain table + notice when only one poll exists so far
+- [x] Smoke test: **no browser available in this environment** — verified instead by (1) running the dbt build clean after the schema changes, (2) starting the app headlessly and confirming no server-side exceptions on load, (3) directly executing every drill-down branch's SQL (state-level, district-level, municipality-level, trend) against real data, and (4) directly testing the empty-result edge case (nonexistent state/district) for the map/bar-chart/trend code paths — all confirmed non-crashing. Visual/interactive confirmation in an actual browser is still outstanding.
 
 ## Phase 6 — Data Quality & Gap Documentation
 

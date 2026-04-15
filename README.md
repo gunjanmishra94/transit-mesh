@@ -28,6 +28,14 @@ uv run dagster dev -m orchestrator.definitions
 
 Jobs: `realtime_ingestion_job` (every minute — RT polling + dbt), `static_gtfs_job` (daily 03:00 — static GTFS + stop enrichment + dbt), `admin_boundaries_job` (manual trigger only — VG250 updates ~annually).
 
+## Dashboard (Streamlit)
+
+```bash
+uv run streamlit run app/main.py
+```
+
+Map / Performance / Trends / Coverage tabs, with a state → district → municipality drill-down in the sidebar.
+
 ## Data sources (all public, no registration — see `project_blueprint.md` §2)
 
 - Realtime: `https://realtime.gtfs.de/realtime-free.pb`
