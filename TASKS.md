@@ -58,9 +58,9 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 
 ## Phase 6 — Data Quality & Gap Documentation
 
-- [ ] Document known coverage gaps (Rhein-Ruhr, Baden-Württemberg bus, Hamburg) in README, sourced from blueprint §2.2
-- [ ] Add a data dictionary noting license per source (CC BY-SA 4.0 for gtfs.de, DL-DE-BY-2.0 for VG250, ODbL for any Geofabrik use)
-- [ ] Decide whether to pursue regional patch feeds (Phase 1 optional item) based on observed gap severity
+- [x] Document known coverage gaps in README, backed by live numbers: 140/459 agencies (30.5%) have scheduled trips but zero RT observations in the trailing 24h, matching the documented Rhein-Ruhr/Baden-Württemberg/Hamburg gaps (blueprint §2.2)
+- [x] Add a license/cadence table per source to README (CC BY-SA 4.0 for gtfs.de, DL-DE-BY-2.0 for VG250, ODbL for Geofabrik)
+- [x] Decision: **not pursuing regional static patch feeds** — static stop-matching is already 98.9% complete, so there's no static data-quality gap to justify it. The RT coverage gap is structural (closing it needs registration-gated per-agency APIs, explicitly out of scope per §2.5) and is documented as a known limitation instead of chased further.
 
 ---
 
