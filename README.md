@@ -10,20 +10,22 @@ DuckDB · dbt-duckdb · Dagster · Streamlit (PyDeck + Plotly)
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/) and `make`.
 
 ```bash
-uv sync
-cp .env.example .env
+make setup      # uv sync + create .env
+make pipeline   # ingest everything + dbt build, end to end (no orchestrator)
+make app        # launch the Streamlit dashboard
 ```
 
-Run scripts with `uv run python ingestion/fetch_static_gtfs.py`, etc.
+Run `make help` for the full list of targets. Individual steps (`make fetch-static`, `make fetch-rt`, `make dbt-build`, ...) are also available if you want to run the pipeline one stage at a time — see `Makefile`.
 
 ## Orchestration (Dagster)
 
 ```bash
-export DAGSTER_HOME="$(pwd)/.dagster_home"  # local run/event storage, gitignored
-uv run dagster dev -m orchestrator.definitions
+make dagster        # launch the Dagster UI at localhost:3000
+make dagster-rt      # run realtime_ingestion_job once via the CLI
+make dagster-static  # run static_gtfs_job once via the CLI
 ```
 
 Jobs: `realtime_ingestion_job` (every minute — RT polling + dbt), `static_gtfs_job` (daily 03:00 — static GTFS + stop enrichment + dbt), `admin_boundaries_job` (manual trigger only — VG250 updates ~annually).
@@ -31,7 +33,7 @@ Jobs: `realtime_ingestion_job` (every minute — RT polling + dbt), `static_gtfs
 ## Dashboard (Streamlit)
 
 ```bash
-uv run streamlit run app/main.py
+make app
 ```
 
 Map / Performance / Trends / Coverage tabs, with a state → district → municipality drill-down in the sidebar.
