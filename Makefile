@@ -2,8 +2,16 @@
         dbt-deps dbt-build dbt-test pipeline dagster dagster-rt dagster-static \
         dagster-boundaries app
 
+# Pinned absolute rather than left relative: dbt's own subprocess runs with
+# cwd=dbt_transit/, so a relative value resolves against the wrong directory
+# for that step. This covers every target here EXCEPT the dagster-* targets
+# below — Dagster's own CLI auto-loads .env from the invocation directory and
+# that overrides this for the whole process, which is why `make setup`
+# generates .env with an absolute path too (see .env.example).
+export DUCKDB_PATH := $(CURDIR)/duckdb_data/transit.duckdb
+
 help:
-	@echo "setup              uv sync + create .env from .env.example"
+	@echo "setup              uv sync + generate .env with an absolute DUCKDB_PATH"
 	@echo "fetch-static       download nationwide static GTFS"
 	@echo "fetch-boundaries   download BKG VG250 admin boundaries"
 	@echo "enrich-stops       point-in-polygon join stops -> boundaries"
@@ -21,7 +29,7 @@ help:
 
 setup:
 	uv sync
-	test -f .env || cp .env.example .env
+	test -f .env || printf 'DUCKDB_PATH=%s/duckdb_data/transit.duckdb\n' "$(CURDIR)" > .env
 
 fetch-static:
 	uv run python ingestion/fetch_static_gtfs.py
