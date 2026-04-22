@@ -1,4 +1,5 @@
 import os
+import time
 import zipfile
 
 import duckdb
@@ -20,14 +21,47 @@ LAYERS = {
 }
 
 
-def download_vg250():
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    with requests.get(VG250_URL, stream=True, timeout=180) as response:
+def _download_attempt():
+    # The ~67MB download has been observed dropping mid-stream (different
+    # byte offset each time, consistent with a connection-duration limit
+    # rather than a fixed-size one) — resume via Range on retry instead of
+    # restarting from scratch.
+    existing_size = os.path.getsize(ZIP_PATH) if os.path.exists(ZIP_PATH) else 0
+    headers = {"Range": f"bytes={existing_size}-"} if existing_size else {}
+
+    with requests.get(VG250_URL, stream=True, timeout=180, headers=headers) as response:
+        if response.status_code == 416:
+            # Requested range starts at/past the resource's end — the cached
+            # file is already the complete download, nothing left to fetch.
+            return
+        if existing_size and response.status_code == 200:
+            # Server ignored the Range request and is sending the full file again.
+            existing_size = 0
         response.raise_for_status()
-        with open(ZIP_PATH, "wb") as f:
+        mode = "ab" if response.status_code == 206 else "wb"
+        content_length = int(response.headers.get("Content-Length", 0))
+        with open(ZIP_PATH, mode) as f:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 f.write(chunk)
-    return ZIP_PATH
+
+    final_size = os.path.getsize(ZIP_PATH)
+    expected_size = existing_size + content_length if content_length else None
+    if expected_size and final_size != expected_size:
+        raise IOError(f"Incomplete download: got {final_size} bytes, expected {expected_size}")
+
+
+def download_vg250(max_retries=4):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            _download_attempt()
+            return ZIP_PATH
+        except (requests.exceptions.RequestException, IOError) as e:
+            last_error = e
+            print(f"Download attempt {attempt}/{max_retries} failed: {e}")
+            time.sleep(min(2 ** attempt, 15))
+    raise last_error
 
 
 def extract_geopackage(zip_path, extract_dir):
