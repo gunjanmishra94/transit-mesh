@@ -62,6 +62,14 @@ Static GTFS is the structural backbone for "every place in Germany" — build th
 - [x] Add a license/cadence table per source to README (CC BY-SA 4.0 for gtfs.de, DL-DE-BY-2.0 for VG250, ODbL for Geofabrik)
 - [x] Decision: **not pursuing regional static patch feeds** — static stop-matching is already 98.9% complete, so there's no static data-quality gap to justify it. The RT coverage gap is structural (closing it needs registration-gated per-agency APIs, explicitly out of scope per §2.5) and is documented as a known limitation instead of chased further.
 
+## Phase 7 — Extended Analytics (post-launch additions)
+
+- [x] Live dashboard auto-refresh: coverage banner + all tabs wrapped in `@st.fragment(run_every="30s")` so the dashboard reflects new data from the every-minute realtime job without a manual browser reload
+- [x] Mode-of-transport breakdown: `route_type`/`route_type_label` (new `macros/route_type_label.sql`) wired through `int_trip_delays_enriched`; new `mrt_performance_by_mode` mart (national) + Mode tab with grouped bar charts (avg/median/p90 + % delayed by Bus/Rail/Tram/Subway/Ferry)
+- [x] Worst-performing routes: new `mrt_performance_by_route` mart (min. 20 observations to filter noise) + Routes tab with a sortable ranking table
+- [x] Fixed the "average delay doesn't make sense for a big city" problem: added `median_delay_minutes` and `p90_delay_minutes` (DuckDB `MEDIAN`/`QUANTILE_CONT`) to `mrt_performance_national` and `mrt_performance_by_municipality`, surfaced alongside average everywhere in the Performance tab instead of average alone; added a SQL-binned (not pandas-side) delay-distribution histogram to the Trends tab so the actual shape is visible, not just one point estimate
+- [x] Verified with `streamlit.testing.v1.AppTest` (not a plain `curl` check — that only fetches the static HTML shell and never triggers real script execution): zero exceptions through the full state → district drill-down, the Routes sort selectbox, and all four new/changed tabs; `dbt build --full-refresh` passes 35/35 (up from 27) after the schema changes
+
 ---
 
 **Explicitly out of scope / excluded per sourcing constraint:** Mobilithek, NAP.NRW, DB Developer API Marketplace, VVS/RMV live TRIAS APIs — all require registration (see blueprint §2.5).

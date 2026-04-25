@@ -69,7 +69,9 @@ def render_dashboard(selected_state, selected_district):
             "'on time'. See the Coverage tab for the full list."
         )
 
-    tab_map, tab_performance, tab_trends, tab_coverage = st.tabs(["Map", "Performance", "Trends", "Coverage"])
+    tab_map, tab_performance, tab_mode, tab_routes, tab_trends, tab_coverage = st.tabs(
+        ["Map", "Performance", "Mode", "Routes", "Trends", "Coverage"]
+    )
 
     # --- Map ---
     with tab_map:
@@ -129,35 +131,88 @@ def render_dashboard(selected_state, selected_district):
 
     # --- Performance (state -> district -> municipality drill-down) ---
     with tab_performance:
+        st.caption(
+            "Average alone can mislead for high-volume areas — a large majority of "
+            "on-time trips pulls it toward zero even when a real tail is badly delayed. "
+            "Median and p90 (90% of trips are within this many minutes) show the shape "
+            "instead of one number."
+        )
         if selected_state == "All Germany":
             df_national = conn.execute("""
-                SELECT state_name, total_observations, avg_delay_minutes, delayed_percentage
-                FROM mrt_performance_national ORDER BY avg_delay_minutes DESC
+                SELECT state_name, total_observations, avg_delay_minutes,
+                       median_delay_minutes, p90_delay_minutes, delayed_percentage
+                FROM mrt_performance_national ORDER BY delayed_percentage DESC
             """).df()
-            st.subheader("Country-Level Macro View: Average Delays by State")
+            st.subheader("Country-Level Macro View: Delays by State")
             st.dataframe(df_national, width="stretch")
             if not df_national.empty:
-                st.bar_chart(df_national.set_index("state_name")["avg_delay_minutes"])
+                st.bar_chart(df_national.set_index("state_name")["delayed_percentage"])
         elif selected_district == "All Districts":
+            # Queried from the raw intermediate table, not re-aggregated from
+            # mrt_performance_by_municipality: averaging per-municipality medians/
+            # percentages unweighted would let a 1-observation municipality count
+            # the same as a 10,000-observation one.
             df_district = conn.execute("""
-                SELECT district_name, SUM(total_observations) AS total_observations,
-                       AVG(avg_delay_minutes) AS avg_delay_minutes
-                FROM mrt_performance_by_municipality
+                SELECT district_name, COUNT(*) AS total_observations,
+                       AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                       MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
+                FROM int_trip_delays_enriched
                 WHERE state_name = ? AND district_name IS NOT NULL
-                GROUP BY 1 ORDER BY avg_delay_minutes DESC
+                GROUP BY 1 ORDER BY delayed_percentage DESC
             """, [selected_state]).df()
             st.subheader(f"District-Level View: {selected_state}")
             st.dataframe(df_district, width="stretch")
             if not df_district.empty:
-                st.bar_chart(df_district.set_index("district_name")["avg_delay_minutes"])
+                st.bar_chart(df_district.set_index("district_name")["delayed_percentage"])
         else:
             df_municipality = conn.execute("""
-                SELECT municipality_name, total_observations, avg_delay_minutes, delayed_percentage
+                SELECT municipality_name, total_observations, avg_delay_minutes,
+                       median_delay_minutes, p90_delay_minutes, delayed_percentage
                 FROM mrt_performance_by_municipality
-                WHERE district_name = ? ORDER BY avg_delay_minutes DESC
+                WHERE district_name = ? ORDER BY delayed_percentage DESC
             """, [selected_district]).df()
             st.subheader(f"Village / Municipality Micro-View: {selected_district}")
             st.dataframe(df_municipality, width="stretch")
+
+    # --- Mode: split by transport mode (bus/rail/tram/subway/ferry) ---
+    with tab_mode:
+        st.caption("National split — mode breakdown isn't filtered by the sidebar selection (medians don't combine validly across a per-state pre-aggregation).")
+        mode_df = conn.execute("""
+            SELECT route_type_label, total_observations, distinct_routes,
+                   avg_delay_minutes, median_delay_minutes, p90_delay_minutes, delayed_percentage
+            FROM mrt_performance_by_mode ORDER BY delayed_percentage DESC
+        """).df()
+        st.dataframe(mode_df, width="stretch")
+        if not mode_df.empty:
+            melted = mode_df.melt(
+                id_vars="route_type_label",
+                value_vars=["avg_delay_minutes", "median_delay_minutes", "p90_delay_minutes"],
+                var_name="metric", value_name="minutes",
+            )
+            fig_mode = px.bar(melted, x="route_type_label", y="minutes", color="metric",
+                               barmode="group", title="Delay by mode: average vs. median vs. p90")
+            st.plotly_chart(fig_mode, width="stretch")
+            fig_mode_pct = px.bar(mode_df, x="route_type_label", y="delayed_percentage",
+                                   title="% of trips delayed >5min, by mode")
+            st.plotly_chart(fig_mode_pct, width="stretch")
+
+    # --- Routes: worst-performing individual routes (min. 20 observations) ---
+    with tab_routes:
+        st.caption("National ranking, minimum 20 observations per route so a single bad poll doesn't dominate.")
+        sort_by = st.selectbox(
+            "Sort by", ["delayed_percentage", "p90_delay_minutes", "avg_delay_minutes", "total_observations"],
+            key="routes_sort_by",
+        )
+        routes_df = conn.execute(f"""
+            SELECT route_short_name, agency_name, route_type_label, total_observations,
+                   avg_delay_minutes, median_delay_minutes, p90_delay_minutes, delayed_percentage
+            FROM mrt_performance_by_route ORDER BY {sort_by} DESC LIMIT 50
+        """).df()
+        if routes_df.empty:
+            st.info("No routes meet the 20-observation minimum yet.")
+        else:
+            st.dataframe(routes_df, width="stretch")
 
     # --- Trends: delay over polling history for the current selection ---
     with tab_trends:
@@ -191,6 +246,31 @@ def render_dashboard(selected_state, selected_district):
             fig = px.line(trend_df, x="bucket", y="avg_delay_minutes", markers=True,
                            title="Average delay over time")
             st.plotly_chart(fig, width="stretch")
+
+        # Distribution, not just a point estimate — this is what actually shows
+        # whether "average ~0" means "everyone's on time" or "early trips and
+        # late trips cancel out." Binned in SQL (not pulled row-by-row into
+        # pandas): "All Germany" can be millions of rows, this always returns
+        # ~80.
+        st.subheader("Delay Distribution")
+        dist_df = conn.execute(f"""
+            SELECT FLOOR(GREATEST(LEAST(arrival_delay_sec / 60.0, 60), -20)) AS bucket_start,
+                   COUNT(*) AS observations
+            FROM int_trip_delays_enriched
+            {where_clause} AND arrival_delay_sec IS NOT NULL
+            GROUP BY 1 ORDER BY 1
+        """, params).df()
+        if dist_df.empty:
+            st.info("No delay observations for this selection yet.")
+        else:
+            total_obs = int(dist_df["observations"].sum())
+            fig_hist = px.bar(
+                dist_df, x="bucket_start", y="observations",
+                title=f"Delay distribution ({total_obs:,} observations, clamped to [-20, 60] min)",
+                labels={"bucket_start": "Delay (minutes)", "observations": "Count"},
+            )
+            fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
+            st.plotly_chart(fig_hist, width="stretch")
 
     # --- Coverage: which agencies actually have realtime data ---
     with tab_coverage:

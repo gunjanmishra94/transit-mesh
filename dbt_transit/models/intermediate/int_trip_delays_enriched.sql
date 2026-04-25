@@ -4,6 +4,11 @@ SELECT
     t.trip_id,
     trips.route_id,
     routes.agency_id,
+    agency.agency_name,
+    routes.route_short_name,
+    routes.route_long_name,
+    routes.route_type,
+    {{ route_type_label('routes.route_type') }} AS route_type_label,
     t.stop_id,
     s.stop_name,
     s.stop_lat,
@@ -24,6 +29,7 @@ SELECT
 FROM {{ ref('stg_rt__trip_updates') }} t
 LEFT JOIN {{ ref('stg_gtfs__trips') }} trips ON t.trip_id = trips.trip_id
 LEFT JOIN {{ ref('stg_gtfs__routes') }} routes ON trips.route_id = routes.route_id
+LEFT JOIN {{ ref('stg_gtfs__agency') }} agency ON routes.agency_id = agency.agency_id
 LEFT JOIN {{ ref('stg_gtfs__stops') }} s ON t.stop_id = s.stop_id
 
 {% if is_incremental() %}

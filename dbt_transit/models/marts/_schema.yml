@@ -44,3 +44,24 @@ models:
                 min_value: 0
                 max_value: 100
                 inclusive: true
+
+  - name: mrt_performance_by_mode
+    columns:
+      - name: route_type_label
+        tests: [not_null, unique]
+      - name: avg_delay_minutes
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -60
+                max_value: 300
+
+  - name: mrt_performance_by_route
+    columns:
+      - name: route_id
+        tests: [not_null, unique]
+      - name: total_observations
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 20
