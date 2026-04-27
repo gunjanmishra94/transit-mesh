@@ -31,17 +31,21 @@ setup:
 	uv sync
 	test -f .env || printf 'DUCKDB_PATH=%s/duckdb_data/transit.duckdb\n' "$(CURDIR)" > .env
 
+# Run as `-m ingestion.x` (module mode, from repo root), not `python
+# ingestion/x.py` (script mode) — orchestrator/definitions.py already imports
+# these as `ingestion.x`, and duckdb_utils.py is a cross-file import within
+# the package, which only resolves in module mode.
 fetch-static:
-	uv run python ingestion/fetch_static_gtfs.py
+	uv run python -m ingestion.fetch_static_gtfs
 
 fetch-boundaries:
-	uv run python ingestion/fetch_admin_boundaries.py
+	uv run python -m ingestion.fetch_admin_boundaries
 
 enrich-stops:
-	uv run python ingestion/enrich_stops_with_boundaries.py
+	uv run python -m ingestion.enrich_stops_with_boundaries
 
 fetch-rt:
-	uv run python ingestion/fetch_rt.py
+	uv run python -m ingestion.fetch_rt
 
 ingest: fetch-static fetch-boundaries enrich-stops fetch-rt
 

@@ -1,8 +1,9 @@
 import os
 import zipfile
 
-import duckdb
 import requests
+
+from ingestion.duckdb_utils import connect_with_retry
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 STATIC_GTFS_URL = "https://download.gtfs.de/germany/free/latest.zip"
@@ -42,7 +43,7 @@ def load_static_gtfs():
     extracted = extract_gtfs_files(zip_path, CACHE_DIR)
 
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = duckdb.connect(DB_PATH)
+    conn = connect_with_retry(DB_PATH)
 
     row_counts = {}
     for filename in extracted:

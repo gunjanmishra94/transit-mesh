@@ -1,6 +1,6 @@
 import os
 
-import duckdb
+from ingestion.duckdb_utils import connect_with_retry
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 
@@ -55,7 +55,7 @@ REQUIRED_TABLES = [
 
 
 def enrich_stops():
-    conn = duckdb.connect(DB_PATH)
+    conn = connect_with_retry(DB_PATH)
     conn.execute("INSTALL spatial; LOAD spatial;")
 
     existing = {row[0] for row in conn.execute("SHOW TABLES").fetchall()}

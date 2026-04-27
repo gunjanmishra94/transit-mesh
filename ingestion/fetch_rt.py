@@ -1,10 +1,11 @@
 import os
 from datetime import datetime, timezone
 
-import duckdb
 import pandas as pd
 import requests
 from google.transit import gtfs_realtime_pb2
+
+from ingestion.duckdb_utils import connect_with_retry
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 RT_URL = "https://realtime.gtfs.de/realtime-free.pb"
@@ -78,7 +79,7 @@ def ingest_gtfs_rt():
     alert_records = parse_service_alerts(feed, feed_timestamp, ingested_at)
 
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = duckdb.connect(DB_PATH)
+    conn = connect_with_retry(DB_PATH)
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw_trip_updates (

@@ -2,8 +2,9 @@ import os
 import time
 import zipfile
 
-import duckdb
 import requests
+
+from ingestion.duckdb_utils import connect_with_retry
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 VG250_URL = "https://daten.gdz.bkg.bund.de/produkte/vg/vg250_ebenen_0101/aktuell/vg250_01-01.utm32s.gpkg.ebenen.zip"
@@ -75,7 +76,7 @@ def load_admin_boundaries():
     gpkg_path = extract_geopackage(zip_path, CACHE_DIR)
 
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = duckdb.connect(DB_PATH)
+    conn = connect_with_retry(DB_PATH)
     conn.execute("INSTALL spatial; LOAD spatial;")
 
     row_counts = {}
