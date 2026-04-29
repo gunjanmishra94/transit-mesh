@@ -1,11 +1,19 @@
 import os
+import sys
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 
-import duckdb
 import plotly.express as px
 import pydeck as pdk
 import streamlit as st
+
+# Explicit rather than relying on how `streamlit run` sets up sys.path: this
+# script needs the sibling `ingestion` package, and Streamlit's own script
+# loader isn't guaranteed to put the repo root on the path the way `python -m`
+# does (this bit us for the ingestion scripts themselves — see Makefile).
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from ingestion.duckdb_utils import connect_with_retry  # noqa: E402
 
 st.set_page_config(page_title="German Transit Intelligence", layout="wide")
 
@@ -20,7 +28,9 @@ def get_db_connection():
     # life of the browser session would permanently block the pipeline.
     # Opening fresh per query batch and closing immediately keeps the lock
     # window down to milliseconds instead of "as long as the tab is open."
-    conn = duckdb.connect(DB_PATH, read_only=True)
+    # connect_with_retry absorbs the residual race where a writer (e.g. the
+    # every-minute realtime job) happens to hold the file at that instant.
+    conn = connect_with_retry(DB_PATH, read_only=True, max_retries=4, base_delay=0.5)
     try:
         yield conn
     finally:
@@ -30,11 +40,18 @@ def get_db_connection():
 try:
     with get_db_connection() as _conn:
         _conn.execute("SELECT 1 FROM mrt_performance_national LIMIT 1")
-except Exception:
-    st.error(
-        "DuckDB file not found or the pipeline hasn't run yet. "
-        "Run ingestion + `dbt build` first (see README)."
-    )
+except Exception as e:
+    if not os.path.exists(DB_PATH):
+        st.error(
+            "DuckDB file not found — the pipeline hasn't run yet. "
+            "Run ingestion + `dbt build` first (see README)."
+        )
+    else:
+        st.error(
+            f"Could not open the database after retrying — it may be held by a "
+            f"long-running write (a full `make pipeline` run, for example). "
+            f"Try reloading in a few seconds.\n\nDetails: {e}"
+        )
     st.stop()
 
 st.title("🇩🇪 Nationwide Transit Intelligence Platform")
