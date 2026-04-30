@@ -31,3 +31,10 @@ models:
     columns:
       - name: trip_id
         tests: [not_null]
+
+  - name: stg_rt__service_alerts
+    columns:
+      - name: entity_id
+        tests: [not_null]
+      - name: cause
+        tests: [not_null]

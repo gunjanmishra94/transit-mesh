@@ -111,8 +111,8 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 "'on time'. See the Coverage tab for the full list."
             )
 
-        tab_map, tab_performance, tab_mode, tab_routes, tab_trends, tab_coverage = st.tabs(
-            ["Map", "Performance", "Mode", "Routes", "Trends", "Coverage"]
+        tab_map, tab_performance, tab_mode, tab_routes, tab_trends, tab_disruptions, tab_coverage = st.tabs(
+            ["Map", "Performance", "Mode", "Routes", "Trends", "Disruptions", "Coverage"]
         )
 
         # --- Map ---
@@ -379,6 +379,72 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 )
                 fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
                 st.plotly_chart(fig_hist, width="stretch")
+
+        # --- Disruptions: GTFS-RT service alerts, national (not stop/route-linkable) ---
+        with tab_disruptions:
+            st.caption(
+                "National — GTFS-RT ServiceAlerts never populate route_ids/agency_ids in this "
+                "feed (0 of 1.5M rows observed), so alerts can't be linked to a specific route, "
+                "agency, or the sidebar's spatial/mode filters."
+            )
+            st.warning(
+                "Data quality note: this feed also (mis)uses the alerts mechanism for static "
+                "vehicle-amenity tags (e.g. 'Niederflur' = low-floor, 'Klimaanlage' = has A/C) "
+                "mixed in with genuine disruptions, and there's no reliable automatic way to tell "
+                "them apart from text alone — length and keywords both fail (e.g. 'Streckensperrung' "
+                "is a real 16-character closure notice; 'Linie RE7: Klimaanlage' is a 22-character "
+                "amenity note). An unambiguous legal-attribution boilerplate message (~77% of all "
+                "alert volume) is already excluded below; the rest is shown as-is — use search or "
+                "the keyword filter to narrow toward genuine disruptions."
+            )
+
+            alerts_by_cause = conn.execute("SELECT * FROM mrt_alerts_by_cause").df()
+            active_total = int(alerts_by_cause["currently_active"].sum())
+            st.metric("Currently active alerts (attribution noise excluded)", f"{active_total:,}")
+            if not alerts_by_cause.empty:
+                fig_cause = px.bar(alerts_by_cause, x="cause", y="currently_active",
+                                    title="Active alerts by cause")
+                st.plotly_chart(fig_cause, width="stretch")
+
+            active_alerts = conn.execute("""
+                SELECT cause, alert_title, description_text, first_seen_at, last_seen_at
+                FROM mrt_active_alerts ORDER BY first_seen_at DESC
+            """).df()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                search = st.text_input("Search alert text", key="alerts_search")
+            with col2:
+                hide_amenities = st.checkbox(
+                    "Try to hide vehicle/amenity tags (heuristic keyword match — imperfect, may miss some or exclude real disruptions that happen to mention these words)",
+                    key="alerts_hide_amenities",
+                )
+
+            display_alerts = active_alerts
+            if search:
+                mask = (
+                    display_alerts["alert_title"].str.contains(search, case=False, na=False)
+                    | display_alerts["description_text"].str.contains(search, case=False, na=False)
+                )
+                display_alerts = display_alerts[mask]
+            if hide_amenities:
+                amenity_keywords = [
+                    "niederflur", "hochflur", "rollstuhlgeeignet", "klimaanlage", "wlan",
+                    "bordrestaurant", "steckdose", "toilette", "einstiegshilfe", "barrierefrei",
+                    "gelenkbus", "solobus", "kleinbus", "ruhezone", "1. kl", "1.klasse", "1. klasse",
+                ]
+                pattern = "|".join(amenity_keywords)
+                mask = ~(
+                    display_alerts["alert_title"].str.contains(pattern, case=False, na=False, regex=True)
+                    | display_alerts["description_text"].str.contains(pattern, case=False, na=False, regex=True)
+                )
+                display_alerts = display_alerts[mask]
+
+            st.caption(f"{len(display_alerts)} of {len(active_alerts)} active alerts shown.")
+            if display_alerts.empty:
+                st.info("No alerts match this filter.")
+            else:
+                st.dataframe(display_alerts, width="stretch")
 
         # --- Coverage: which agencies actually have realtime data ---
         with tab_coverage:

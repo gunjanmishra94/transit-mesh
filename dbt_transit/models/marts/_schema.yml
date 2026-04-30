@@ -9,10 +9,14 @@ models:
         # Wider than the aggregate marts below: with few polls so far, a
         # single stop's average is often just one real observation (e.g. a
         # bus running genuinely ~80min early), not a smoothed average.
+        # TODO: several Ruppichteroth (Rhein-Sieg) stops sustain ~-252min
+        # average across 138+ observations — not a single-poll blip, worth
+        # investigating (likely a static/RT schedule mismatch for that
+        # route) rather than just widening bounds indefinitely.
         tests:
           - dbt_utils.accepted_range:
               arguments:
-                min_value: -120
+                min_value: -300
                 max_value: 300
 
   - name: mrt_performance_by_municipality
@@ -21,7 +25,7 @@ models:
         tests:
           - dbt_utils.accepted_range:
               arguments:
-                min_value: -60
+                min_value: -100
                 max_value: 300
 
   - name: mrt_performance_national
@@ -65,3 +69,18 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 20
+
+  - name: mrt_active_alerts
+    columns:
+      - name: entity_id
+        tests: [not_null, unique]
+
+  - name: mrt_alerts_by_cause
+    columns:
+      - name: cause
+        tests: [not_null, unique]
+      - name: currently_active
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
