@@ -256,12 +256,34 @@ def render_dashboard(selected_state, selected_district, selected_mode):
 
         # --- Mode: split by transport mode (bus/rail/tram/subway/ferry) ---
         with tab_mode:
-            st.caption("National split — mode breakdown isn't filtered by the sidebar selection (medians don't combine validly across a per-state pre-aggregation).")
-            mode_df = conn.execute("""
-                SELECT route_type_label, total_observations, distinct_routes,
-                       avg_delay_minutes, median_delay_minutes, p90_delay_minutes, delayed_percentage
-                FROM mrt_performance_by_mode ORDER BY delayed_percentage DESC
-            """).df()
+            st.caption(
+                "Respects the state/district drill-down. Not filtered by the Mode selector "
+                "itself — this tab IS the cross-mode comparison, so restricting it to one "
+                "mode would defeat the point."
+            )
+            geo_where = []
+            geo_params = []
+            if selected_state != "All Germany":
+                geo_where.append("state_name = ?")
+                geo_params.append(selected_state)
+                if selected_district != "All Districts":
+                    geo_where.append("district_name = ?")
+                    geo_params.append(selected_district)
+            geo_clause = ("WHERE " + " AND ".join(geo_where)) if geo_where else ""
+
+            mode_df = conn.execute(f"""
+                SELECT route_type_label,
+                       COUNT(*) AS total_observations,
+                       COUNT(DISTINCT route_id) AS distinct_routes,
+                       AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                       MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
+                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
+                FROM int_trip_delays_enriched
+                {geo_clause}
+                {"AND" if geo_clause else "WHERE"} route_type_label IS NOT NULL
+                GROUP BY 1 ORDER BY delayed_percentage DESC
+            """, geo_params).df()
             st.dataframe(mode_df, width="stretch")
             if not mode_df.empty:
                 melted = mode_df.melt(
@@ -278,7 +300,11 @@ def render_dashboard(selected_state, selected_district, selected_mode):
 
         # --- Routes: worst-performing individual routes (min. 20 observations) ---
         with tab_routes:
-            st.caption("The underlying mart already floors at 20 observations per route so a single bad poll can't dominate; the slider below can only raise that floor further.")
+            st.caption(
+                "Respects the full sidebar (state/district/mode) plus the filters below. "
+                "Queried live, not from a pre-materialized mart — routes don't map to a "
+                "single region, so a region filter has to recompute from raw observations."
+            )
             route_agencies = conn.execute(
                 "SELECT DISTINCT agency_name FROM mrt_performance_by_route WHERE agency_name IS NOT NULL ORDER BY 1"
             ).df()["agency_name"].tolist()
@@ -296,8 +322,14 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             with col4:
                 row_limit = st.slider("Rows to show", 10, 200, 50, key="routes_limit")
 
-            routes_where = ["total_observations >= ?"]
-            routes_params = [min_obs]
+            routes_where = ["route_id IS NOT NULL", "route_id != ''"]
+            routes_params = []
+            if selected_state != "All Germany":
+                routes_where.append("state_name = ?")
+                routes_params.append(selected_state)
+                if selected_district != "All Districts":
+                    routes_where.append("district_name = ?")
+                    routes_params.append(selected_district)
             if selected_mode != "All Modes":
                 routes_where.append("route_type_label = ?")
                 routes_params.append(selected_mode)
@@ -306,16 +338,22 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 routes_params.append(selected_agency)
 
             routes_df = conn.execute(f"""
-                SELECT route_short_name, agency_name, route_type_label, total_observations,
-                       avg_delay_minutes, median_delay_minutes, p90_delay_minutes, delayed_percentage
-                FROM mrt_performance_by_route
+                SELECT route_id, route_short_name, agency_name, route_type_label,
+                       COUNT(*) AS total_observations,
+                       AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                       MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
+                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
+                FROM int_trip_delays_enriched
                 WHERE {' AND '.join(routes_where)}
+                GROUP BY 1, 2, 3, 4
+                HAVING COUNT(*) >= ?
                 ORDER BY {sort_by} DESC LIMIT {row_limit}
-            """, routes_params).df()
+            """, routes_params + [min_obs]).df()
             if routes_df.empty:
                 st.info("No routes match this filter combination.")
             else:
-                st.dataframe(routes_df, width="stretch")
+                st.dataframe(routes_df.drop(columns=["route_id"]), width="stretch")
 
         # --- Trends: delay over polling history for the current selection ---
         with tab_trends:
@@ -383,9 +421,11 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         # --- Disruptions: GTFS-RT service alerts, national (not stop/route-linkable) ---
         with tab_disruptions:
             st.caption(
-                "National — GTFS-RT ServiceAlerts never populate route_ids/agency_ids in this "
-                "feed (0 of 1.5M rows observed), so alerts can't be linked to a specific route, "
-                "agency, or the sidebar's spatial/mode filters."
+                "Not filtered by the sidebar, on purpose — not an oversight: route_ids/"
+                "agency_ids are never populated in this feed (0 of 1.5M rows), and stop_ids "
+                "are populated on only ~0.7% of alerts (30 of 4,030 currently active). "
+                "Applying the region/mode filters here would hide 99%+ of alerts rather than "
+                "meaningfully narrow them, which would be worse than not filtering at all."
             )
             st.warning(
                 "Data quality note: this feed also (mis)uses the alerts mechanism for static "
@@ -451,11 +491,32 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             st.subheader("Realtime Coverage by Agency (trailing 24h)")
             st.caption(
                 "0% coverage with scheduled trips > 0 means no realtime signal at all for that "
-                "agency — its stops are missing data, not performing well. Agency-level only, "
-                "not filtered by the Mode selector (one agency can run several modes)."
+                "agency — its stops are missing data, not performing well. Not filtered by the "
+                "Mode selector (one agency can run several modes)."
             )
-            search = st.text_input("Search agency name", key="coverage_search")
             display_df = coverage_df
+            if selected_state != "All Germany":
+                # scheduled_trip_count / rt_coverage_pct stay NATIONAL values — there's no
+                # stop_times.txt ingested to compute a true per-region scheduled baseline
+                # (deliberately excluded, see fetch_static_gtfs.py). This only restricts
+                # WHICH agencies are shown, to ones actually observed via RT in this region.
+                region_where = ["state_name = ?"]
+                region_params = [selected_state]
+                if selected_district != "All Districts":
+                    region_where.append("district_name = ?")
+                    region_params.append(selected_district)
+                regional_agencies = conn.execute(f"""
+                    SELECT DISTINCT agency_id FROM int_trip_delays_enriched
+                    WHERE {' AND '.join(region_where)} AND agency_id IS NOT NULL
+                """, region_params).df()["agency_id"].tolist()
+                display_df = display_df[display_df["agency_id"].isin(regional_agencies)]
+                region_label = selected_district if selected_district != "All Districts" else selected_state
+                st.caption(
+                    f"Showing the {len(display_df)} agencies with realtime observations in "
+                    f"{region_label}. Their coverage % is still their NATIONWIDE figure, not "
+                    f"specific to this region."
+                )
+            search = st.text_input("Search agency name", key="coverage_search")
             if search:
                 display_df = display_df[display_df["agency_name"].str.contains(search, case=False, na=False)]
             st.dataframe(
