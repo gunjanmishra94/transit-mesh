@@ -1,5 +1,6 @@
 .env
 duckdb_data/*.duckdb
+duckdb_data/*.duckdb.wal
 ingestion/.cache/
 dbt_transit/target/
 dbt_transit/logs/
