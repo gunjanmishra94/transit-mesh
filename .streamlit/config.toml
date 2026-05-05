@@ -1,0 +1,43 @@
+# Theme built from the dataviz skill's validated reference palette
+# (references/palette.md) — dark-mode surfaces/ink, the validated 8-slot
+# CVD-safe categorical order, and the single-hue blue sequential ramp.
+# chartDivergingColors deliberately left unset: the skill only defines the
+# diverging pair's two poles + neutral midpoint, not a validated 10-step
+# ramp (Streamlit requires exactly 10 colors here) — fabricating one would
+# violate the skill's own "compute, don't eyeball" rule, so this falls
+# back to Streamlit's own default diverging scale instead.
+
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#ffffff"
+font = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+linkColor = "#3987e5"
+borderColor = "#2c2c2a"
+dataframeBorderColor = "#2c2c2a"
+
+# Status colors (fixed, never themed per the skill) mapped onto Streamlit's
+# built-in alert colors so st.error/st.warning/st.success read as the same
+# severity language used in the Coverage/Disruptions warning banners.
+redColor = "#d03b3b"     # critical -> st.error
+yellowColor = "#fab219"  # warning  -> st.warning
+greenColor = "#0ca30c"   # good     -> st.success
+orangeColor = "#ec835a"  # serious  -> reserved for custom use
+
+# The 8 validated hues (dark-surface steps), in their CVD-safe adjacent
+# order. Unlike chartSequentialColors below, this one takes "one or more"
+# colors and cycles past the end — no padding needed (nothing here exceeds
+# 5 categories anyway).
+chartCategoricalColors = [
+    "#3987e5", "#d95926", "#199e70", "#c98500",
+    "#d55181", "#008300", "#9085e9", "#e66767",
+]
+
+# 10 steps from the validated blue sequential ramp (100->700), light to
+# dark, evenly thinned from the skill's 13-step table.
+chartSequentialColors = [
+    "#cde2fb", "#b7d3f6", "#9ec5f4", "#6da7ec", "#5598e7",
+    "#3987e5", "#256abf", "#1c5cab", "#184f95", "#0d366b",
+]

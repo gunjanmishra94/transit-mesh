@@ -54,6 +54,30 @@ except Exception as e:
         )
     st.stop()
 
+# Status palette from the dataviz skill (references/palette.md) — fixed,
+# never themed, and validated to stay distinct from the categorical chart
+# slots. Used as discrete severity bands on the map rather than a
+# continuous RGB fade: a status palette encodes STATE, not magnitude, so
+# banding is the correct use of it (and reads more clearly than a smooth
+# green-to-red gradient with no interpretable boundary).
+STATUS_COLORS_RGB = {
+    "good": (12, 163, 12),
+    "warning": (250, 178, 25),
+    "serious": (236, 131, 90),
+    "critical": (208, 59, 59),
+}
+
+
+def severity_band(value, good_max, warning_max, serious_max):
+    if value <= good_max:
+        return "good"
+    if value <= warning_max:
+        return "warning"
+    if value <= serious_max:
+        return "serious"
+    return "critical"
+
+
 st.title("🇩🇪 Nationwide Transit Intelligence Platform")
 st.markdown("Real-time telemetry, delay propagation, and spatial analytics from country to village level.")
 
@@ -170,18 +194,26 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             if map_df.empty:
                 st.info("No geolocated observations for this selection yet.")
             else:
-                # Green -> red: avg delay clamped to 15min, % delayed clamped to 50%.
-                clamp_max = 15 if color_metric == "avg_delay_minutes" else 50
-                clamped = map_df[color_metric].clip(-5 if color_metric == "avg_delay_minutes" else 0, clamp_max)
-                map_df["color_r"] = (clamped / clamp_max * 255).clip(0, 255)
-                map_df["color_g"] = 255 - map_df["color_r"]
+                if color_metric == "avg_delay_minutes":
+                    thresholds = (2, 5, 15)  # minutes
+                    legend = "🟢 ≤2min  🟡 2-5min  🟠 5-15min  🔴 >15min"
+                else:
+                    thresholds = (5, 15, 30)  # percent
+                    legend = "🟢 ≤5%  🟡 5-15%  🟠 15-30%  🔴 >30%"
+                st.caption(legend)
+
+                bands = map_df[color_metric].apply(lambda v: severity_band(v, *thresholds))
+                rgb = bands.map(STATUS_COLORS_RGB)
+                map_df["color_r"] = rgb.apply(lambda t: t[0])
+                map_df["color_g"] = rgb.apply(lambda t: t[1])
+                map_df["color_b"] = rgb.apply(lambda t: t[2])
 
                 layer = pdk.Layer(
                     "ScatterplotLayer",
                     data=map_df,
                     get_position=["lon", "lat"],
                     get_radius=point_radius,
-                    get_fill_color=["color_r", "color_g", 60, 180],
+                    get_fill_color=["color_r", "color_g", "color_b", 200],
                     pickable=True,
                 )
                 view_state = pdk.ViewState(
