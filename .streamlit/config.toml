@@ -1,22 +1,23 @@
 # Theme built from the dataviz skill's validated reference palette
-# (references/palette.md) — dark-mode surfaces/ink, the validated 8-slot
-# CVD-safe categorical order, and the single-hue blue sequential ramp.
-# chartDivergingColors deliberately left unset: the skill only defines the
-# diverging pair's two poles + neutral midpoint, not a validated 10-step
-# ramp (Streamlit requires exactly 10 colors here) — fabricating one would
-# violate the skill's own "compute, don't eyeball" rule, so this falls
-# back to Streamlit's own default diverging scale instead.
+# (references/palette.md), which validates BOTH a light and a dark column
+# for the categorical hues — so both are defined properly here, in
+# [theme.light]/[theme.dark], rather than one fixed [theme].
+#
+# IMPORTANT: per Streamlit's own theming docs, the light/dark toggle in the
+# app's settings menu only appears if BOTH [theme.light] and [theme.dark]
+# are defined — a bare [theme] block locks the app to a single mode. (This
+# is exactly what broke the light theme in an earlier version of this file
+# that only set [theme].)
+#
+# chartDivergingColors is left unset in both modes: the skill only defines
+# the diverging pair's two poles + neutral midpoint, not a validated
+# 10-step ramp (Streamlit requires exactly 10 colors here) — fabricating
+# one would violate the skill's own "compute, don't eyeball" rule, so this
+# falls back to Streamlit's own default diverging scale instead.
 
 [theme]
-base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#0d0d0d"
-secondaryBackgroundColor = "#1a1a19"
-textColor = "#ffffff"
+# Shared across both modes — mode-invariant per the skill.
 font = "system-ui, -apple-system, 'Segoe UI', sans-serif"
-linkColor = "#3987e5"
-borderColor = "#2c2c2a"
-dataframeBorderColor = "#2c2c2a"
 
 # Status colors (fixed, never themed per the skill) mapped onto Streamlit's
 # built-in alert colors so st.error/st.warning/st.success read as the same
@@ -26,18 +27,39 @@ yellowColor = "#fab219"  # warning  -> st.warning
 greenColor = "#0ca30c"   # good     -> st.success
 orangeColor = "#ec835a"  # serious  -> reserved for custom use
 
-# The 8 validated hues (dark-surface steps), in their CVD-safe adjacent
-# order. Unlike chartSequentialColors below, this one takes "one or more"
-# colors and cycles past the end — no padding needed (nothing here exceeds
-# 5 categories anyway).
-chartCategoricalColors = [
-    "#3987e5", "#d95926", "#199e70", "#c98500",
-    "#d55181", "#008300", "#9085e9", "#e66767",
-]
-
 # 10 steps from the validated blue sequential ramp (100->700), light to
-# dark, evenly thinned from the skill's 13-step table.
+# dark, evenly thinned from the skill's 13-step table — same ramp for
+# both modes per the skill (only the categorical hues have separate
+# light/dark columns).
 chartSequentialColors = [
     "#cde2fb", "#b7d3f6", "#9ec5f4", "#6da7ec", "#5598e7",
     "#3987e5", "#256abf", "#1c5cab", "#184f95", "#0d366b",
+]
+
+[theme.light]
+primaryColor = "#2a78d6"
+backgroundColor = "#f9f9f7"
+secondaryBackgroundColor = "#fcfcfb"
+textColor = "#0b0b0b"
+linkColor = "#2a78d6"
+borderColor = "#e1e0d9"
+dataframeBorderColor = "#e1e0d9"
+# Light-column validated hues, in their CVD-safe adjacent order.
+chartCategoricalColors = [
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
+]
+
+[theme.dark]
+primaryColor = "#3987e5"
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#ffffff"
+linkColor = "#3987e5"
+borderColor = "#2c2c2a"
+dataframeBorderColor = "#2c2c2a"
+# Dark-column validated hues, in their CVD-safe adjacent order.
+chartCategoricalColors = [
+    "#3987e5", "#d95926", "#199e70", "#c98500",
+    "#d55181", "#008300", "#9085e9", "#e66767",
 ]
