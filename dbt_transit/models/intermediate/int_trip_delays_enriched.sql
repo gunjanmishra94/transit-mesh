@@ -32,6 +32,15 @@ LEFT JOIN {{ ref('stg_gtfs__routes') }} routes ON trips.route_id = routes.route_
 LEFT JOIN {{ ref('stg_gtfs__agency') }} agency ON routes.agency_id = agency.agency_id
 LEFT JOIN {{ ref('stg_gtfs__stops') }} s ON t.stop_id = s.stop_id
 
+-- Excludes a day-boundary/midnight-rollover bug found on Verkehrsverbund
+-- Rhein-Sieg route 10930: 141 observations at exactly -1440.0min and 141 at
+-- -1439.5min (i.e. -24h, almost to the second) — the unmistakable signature
+-- of a date mismatch, not a real delay. No real-world transit delay is
+-- legitimately within a minute of a full day; 12h is a generous cutoff that
+-- clears this artifact while still passing genuinely severe real disruptions.
+WHERE (t.arrival_delay_sec IS NULL OR ABS(t.arrival_delay_sec) <= 43200)
+  AND (t.departure_delay_sec IS NULL OR ABS(t.departure_delay_sec) <= 43200)
+
 {% if is_incremental() %}
-  WHERE t.ingested_at > (SELECT MAX(ingested_at) FROM {{ this }})
+  AND t.ingested_at > (SELECT MAX(ingested_at) FROM {{ this }})
 {% endif %}

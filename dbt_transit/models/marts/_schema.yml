@@ -9,19 +9,19 @@ models:
         # Wider than the aggregate marts below: with few polls so far, a
         # single stop's average is often just one real observation (e.g. a
         # bus running genuinely ~80min early), not a smoothed average.
-        # TODO: several Ruppichteroth (Rhein-Sieg) stops keep drifting more
-        # negative as more polls accumulate (-252min at 138 obs -> -319min
-        # at 165 obs) — growing rather than settling, so this reads as a
-        # systematic bug (likely a stale reference time in a static/RT
-        # schedule mismatch for that route) rather than noise. Set to a
-        # generous sanity ceiling rather than re-tightened around a value
-        # that keeps moving; investigate the root cause instead of chasing
-        # this bound again.
+        # RESOLVED: the Ruppichteroth (Rhein-Sieg) anomaly that used to
+        # require a +-600min sanity ceiling here was a day-boundary/midnight-
+        # rollover bug on VRS route 10930 — 141 observations at exactly
+        # -1440.0min and 141 at -1439.5min (i.e. -24h, almost to the second),
+        # not a real delay. Filtered at the source in
+        # int_trip_delays_enriched.sql (|delay| > 12h excluded); bounds
+        # re-tightened now that the actual root cause is fixed rather than
+        # papered over with a wider range.
         tests:
           - dbt_utils.accepted_range:
               arguments:
-                min_value: -600
-                max_value: 600
+                min_value: -120
+                max_value: 300
 
   - name: mrt_performance_by_municipality
     columns:
