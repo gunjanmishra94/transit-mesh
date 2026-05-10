@@ -11,3 +11,5 @@ sources:
       - name: stg_gtfs_stops_enriched
       - name: raw_trip_updates
       - name: raw_service_alerts
+      - name: raw_vg250_states
+      - name: raw_vg250_districts

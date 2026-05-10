@@ -88,3 +88,28 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+
+  - name: mrt_performance_by_agency
+    columns:
+      - name: agency_id
+        tests: [not_null, unique]
+      - name: avg_delay_minutes
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -60
+                max_value: 300
+
+  - name: mrt_map_choropleth_states
+    columns:
+      - name: state_name
+        tests: [not_null, unique]
+      - name: geojson
+        tests: [not_null]
+
+  - name: mrt_map_choropleth_districts
+    columns:
+      - name: district_id
+        tests: [not_null, unique]
+      - name: geojson
+        tests: [not_null]

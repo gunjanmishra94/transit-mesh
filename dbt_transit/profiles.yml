@@ -5,3 +5,5 @@ dbt_transit:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', '../duckdb_data/transit.duckdb') }}"
       threads: 4
+      extensions:
+        - spatial  # needed to read the GEOMETRY column on raw_vg250_* (choropleth marts)
