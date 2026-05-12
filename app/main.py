@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -78,6 +79,56 @@ def severity_band(value, good_max, warning_max, serious_max):
     return "critical"
 
 
+def wilson_lower_bound_sql(successes_expr, n_expr, z=1.96):
+    # Mirrors dbt_transit/macros/wilson_lower_bound.sql — used here for tabs
+    # that query int_trip_delays_enriched live (Routes, Agency) rather than
+    # the pre-materialized mrt_performance_by_route, which already has this
+    # baked in via the dbt macro.
+    return (
+        f"(((({successes_expr})::DOUBLE / ({n_expr})) + ({z}*{z})/(2*({n_expr})) "
+        f"- {z}*SQRT(((({successes_expr})::DOUBLE/({n_expr}))*(1-(({successes_expr})::DOUBLE/({n_expr}))) "
+        f"+ ({z}*{z})/(4*({n_expr})))/({n_expr}))) "
+        f"/ (1 + ({z}*{z})/({n_expr})))"
+    )
+
+
+@st.cache_data(ttl=86400)
+def get_state_geometries():
+    # VG250 updates ~annually and this is a multi-MB payload (5.9MB for all
+    # 16 states) — cached separately from the frequently-changing delay
+    # stats so the 30s auto-refresh doesn't re-fetch/re-transform geometry
+    # that never changes within a session.
+    with get_db_connection() as conn:
+        return conn.execute("SELECT state_name, geojson FROM mrt_map_choropleth_states").df()
+
+
+@st.cache_data(ttl=86400)
+def get_district_geometries():
+    with get_db_connection() as conn:
+        return conn.execute(
+            "SELECT district_id, district_name, state_name, geojson FROM mrt_map_choropleth_districts"
+        ).df()
+
+
+def build_choropleth_layer(merged_df, color_metric, thresholds):
+    features = []
+    for _, row in merged_df.iterrows():
+        band = severity_band(row[color_metric], *thresholds)
+        r, g, b = STATUS_COLORS_RGB[band]
+        features.append({
+            "type": "Feature",
+            "geometry": json.loads(row["geojson"]),
+            "properties": {
+                "label": row["label"],
+                "avg_delay_minutes": round(float(row["avg_delay_minutes"]), 2),
+                "delayed_percentage": round(float(row["delayed_percentage"]), 2),
+                "total_observations": int(row["total_observations"]),
+                "fill_color": [r, g, b, 180],
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}
+
+
 st.title("🇩🇪 Nationwide Transit Intelligence Platform")
 st.markdown("Real-time telemetry, delay propagation, and spatial analytics from country to village level.")
 
@@ -135,100 +186,202 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 "'on time'. See the Coverage tab for the full list."
             )
 
-        tab_map, tab_performance, tab_mode, tab_routes, tab_trends, tab_disruptions, tab_coverage = st.tabs(
-            ["Map", "Performance", "Mode", "Routes", "Trends", "Disruptions", "Coverage"]
+        # --- Executive summary: a 3-second read before drilling into tabs ---
+        # --- Respects the full sidebar; "Active disruptions" stays national ---
+        # --- (Disruptions tab explains why it can't be region/mode filtered). ---
+        summary_where = ["1=1"]
+        summary_params = []
+        if selected_state != "All Germany":
+            summary_where.append("state_name = ?")
+            summary_params.append(selected_state)
+            if selected_district != "All Districts":
+                summary_where.append("district_name = ?")
+                summary_params.append(selected_district)
+        if selected_mode != "All Modes":
+            summary_where.append("route_type_label = ?")
+            summary_params.append(selected_mode)
+
+        total_obs, avg_delay, p90_delay, pct_delayed = conn.execute(f"""
+            SELECT COUNT(*), AVG(arrival_delay_sec) / 60.0,
+                   QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0,
+                   SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*)
+            FROM int_trip_delays_enriched
+            WHERE {' AND '.join(summary_where)}
+        """, summary_params).fetchone()
+        active_disruptions = conn.execute("SELECT SUM(currently_active) FROM mrt_alerts_by_cause").fetchone()[0]
+
+        region_desc = selected_district if selected_district != "All Districts" else selected_state
+        mode_desc = f" · {selected_mode}" if selected_mode != "All Modes" else ""
+        st.caption(f"Summary for: {region_desc}{mode_desc}")
+        tiles = st.columns(5)
+        tiles[0].metric("Observations", f"{total_obs:,}" if total_obs else "0")
+        tiles[1].metric("Avg delay", f"{avg_delay:.1f} min" if avg_delay is not None else "n/a")
+        tiles[2].metric("% delayed >5min", f"{pct_delayed:.1f}%" if pct_delayed is not None else "n/a")
+        tiles[3].metric("p90 delay", f"{p90_delay:.1f} min" if p90_delay is not None else "n/a")
+        tiles[4].metric("Active disruptions (national)", f"{int(active_disruptions):,}" if active_disruptions else "0")
+
+        tab_map, tab_performance, tab_mode, tab_routes, tab_agency, tab_trends, tab_disruptions, tab_coverage = st.tabs(
+            ["Map", "Performance", "Mode", "Routes", "Agency", "Trends", "Disruptions", "Coverage"]
         )
 
         # --- Map ---
         with tab_map:
-            color_metric = st.radio(
-                "Color by", ["avg_delay_minutes", "delayed_percentage"],
-                format_func=lambda v: "Average delay" if v == "avg_delay_minutes" else "% delayed >5min",
-                horizontal=True, key="map_color_metric",
-            )
-            # Queried live from int_trip_delays_enriched (not the pre-materialized
-            # marts) so the mode filter applies here too.
-            if selected_state == "All Germany":
-                map_df = conn.execute(f"""
-                    WITH stop_locations AS (
-                        SELECT DISTINCT stop_id, municipality_id, stop_lat, stop_lon
+            map_col1, map_col2 = st.columns(2)
+            with map_col1:
+                map_style = st.radio(
+                    "Map style", ["Points", "Choropleth"], horizontal=True, key="map_style",
+                )
+            with map_col2:
+                color_metric = st.radio(
+                    "Color by", ["avg_delay_minutes", "delayed_percentage"],
+                    format_func=lambda v: "Average delay" if v == "avg_delay_minutes" else "% delayed >5min",
+                    horizontal=True, key="map_color_metric",
+                )
+            if color_metric == "avg_delay_minutes":
+                thresholds = (2, 5, 15)  # minutes
+                legend = "🟢 ≤2min  🟡 2-5min  🟠 5-15min  🔴 >15min"
+            else:
+                thresholds = (5, 15, 30)  # percent
+                legend = "🟢 ≤5%  🟡 5-15%  🟠 15-30%  🔴 >30%"
+            st.caption(legend)
+
+            choropleth_df = None
+            if map_style == "Choropleth":
+                if selected_state == "All Germany":
+                    geo_df = get_state_geometries()
+                    stats = conn.execute(f"""
+                        SELECT state_name, AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                               SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
+                               COUNT(*) AS total_observations
                         FROM int_trip_delays_enriched
-                        WHERE municipality_id IS NOT NULL {mode_clause}
-                    ),
-                    centroids AS (
-                        SELECT municipality_id, AVG(stop_lat) AS lat, AVG(stop_lon) AS lon
-                        FROM stop_locations GROUP BY 1
+                        WHERE state_name IS NOT NULL {mode_clause}
+                        GROUP BY 1
+                    """, mode_params).df()
+                    choropleth_df = geo_df.merge(stats, on="state_name", how="inner").rename(
+                        columns={"state_name": "label"}
                     )
-                    SELECT m.municipality_name AS label, c.lat, c.lon,
-                           AVG(m.arrival_delay_sec) / 60.0 AS avg_delay_minutes,
-                           SUM(CASE WHEN m.is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
-                           COUNT(*) AS total_observations
-                    FROM int_trip_delays_enriched m
-                    JOIN centroids c ON m.municipality_id = c.municipality_id
-                    WHERE 1=1 {mode_clause}
-                    GROUP BY 1, 2, 3
-                """, mode_params + mode_params).df()
-                st.caption("Municipality-level centroids for all of Germany. Select a state for stop-level detail.")
-                point_radius = 300
-                zoom = 5.3
-            else:
-                query = f"""
-                    SELECT stop_name AS label, stop_lat AS lat, stop_lon AS lon,
-                           AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
-                           SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
-                           COUNT(*) AS total_observations
-                    FROM int_trip_delays_enriched
-                    WHERE state_name = ? AND stop_lat IS NOT NULL {mode_clause}
-                """
-                params = [selected_state] + mode_params
-                if selected_district != "All Districts":
-                    query += " AND district_name = ?"
-                    params.append(selected_district)
-                query += " GROUP BY 1, 2, 3"
-                map_df = conn.execute(query, params).df()
-                region_label = selected_district if selected_district != "All Districts" else selected_state
-                st.caption(f"{len(map_df)} stops in {region_label}.")
-                point_radius = 80
-                zoom = 9 if selected_district != "All Districts" else 7.5
-
-            if map_df.empty:
-                st.info("No geolocated observations for this selection yet.")
-            else:
-                if color_metric == "avg_delay_minutes":
-                    thresholds = (2, 5, 15)  # minutes
-                    legend = "🟢 ≤2min  🟡 2-5min  🟠 5-15min  🔴 >15min"
+                    zoom = 5.3
+                elif selected_district == "All Districts":
+                    geo_df = get_district_geometries()
+                    geo_df = geo_df[geo_df["state_name"] == selected_state]
+                    stats = conn.execute(f"""
+                        SELECT district_id, AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                               SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
+                               COUNT(*) AS total_observations
+                        FROM int_trip_delays_enriched
+                        WHERE state_name = ? AND district_id IS NOT NULL {mode_clause}
+                        GROUP BY 1
+                    """, [selected_state] + mode_params).df()
+                    choropleth_df = geo_df.merge(stats, on="district_id", how="inner").rename(
+                        columns={"district_name": "label"}
+                    )
+                    zoom = 7.5
                 else:
-                    thresholds = (5, 15, 30)  # percent
-                    legend = "🟢 ≤5%  🟡 5-15%  🟠 15-30%  🔴 >30%"
-                st.caption(legend)
+                    st.info("No polygon level below district — showing points instead for this drill-down.")
 
-                bands = map_df[color_metric].apply(lambda v: severity_band(v, *thresholds))
-                rgb = bands.map(STATUS_COLORS_RGB)
-                map_df["color_r"] = rgb.apply(lambda t: t[0])
-                map_df["color_g"] = rgb.apply(lambda t: t[1])
-                map_df["color_b"] = rgb.apply(lambda t: t[2])
+            if choropleth_df is not None:
+                st.caption(f"{len(choropleth_df)} regions.")
+                if choropleth_df.empty:
+                    st.info("No observations for this selection yet.")
+                else:
+                    geojson_fc = build_choropleth_layer(choropleth_df, color_metric, thresholds)
+                    layer = pdk.Layer(
+                        "GeoJsonLayer",
+                        data=geojson_fc,
+                        get_fill_color="properties.fill_color",
+                        get_line_color=[255, 255, 255, 60],
+                        line_width_min_pixels=1,
+                        stroked=True,
+                        filled=True,
+                        pickable=True,
+                    )
+                    view_state = pdk.ViewState(latitude=51.1657, longitude=10.4515, zoom=zoom)
+                    st.pydeck_chart(pdk.Deck(
+                        layers=[layer],
+                        initial_view_state=view_state,
+                        tooltip={
+                            "text": "{label}\nAvg delay: {avg_delay_minutes} min\n"
+                                    "% delayed: {delayed_percentage}%\nObservations: {total_observations}"
+                        },
+                    ))
+            else:
+                # Points — also the fallback when Choropleth has no polygon level
+                # to show (municipality drill-down). Queried live from
+                # int_trip_delays_enriched (not the pre-materialized marts) so
+                # the mode filter applies here too.
+                if selected_state == "All Germany":
+                    map_df = conn.execute(f"""
+                        WITH stop_locations AS (
+                            SELECT DISTINCT stop_id, municipality_id, stop_lat, stop_lon
+                            FROM int_trip_delays_enriched
+                            WHERE municipality_id IS NOT NULL {mode_clause}
+                        ),
+                        centroids AS (
+                            SELECT municipality_id, AVG(stop_lat) AS lat, AVG(stop_lon) AS lon
+                            FROM stop_locations GROUP BY 1
+                        )
+                        SELECT m.municipality_name AS label, c.lat, c.lon,
+                               AVG(m.arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                               SUM(CASE WHEN m.is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
+                               COUNT(*) AS total_observations
+                        FROM int_trip_delays_enriched m
+                        JOIN centroids c ON m.municipality_id = c.municipality_id
+                        WHERE 1=1 {mode_clause}
+                        GROUP BY 1, 2, 3
+                    """, mode_params + mode_params).df()
+                    st.caption("Municipality-level centroids for all of Germany. Select a state for stop-level detail.")
+                    point_radius = 300
+                    zoom = 5.3
+                else:
+                    query = f"""
+                        SELECT stop_name AS label, stop_lat AS lat, stop_lon AS lon,
+                               AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                               SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
+                               COUNT(*) AS total_observations
+                        FROM int_trip_delays_enriched
+                        WHERE state_name = ? AND stop_lat IS NOT NULL {mode_clause}
+                    """
+                    params = [selected_state] + mode_params
+                    if selected_district != "All Districts":
+                        query += " AND district_name = ?"
+                        params.append(selected_district)
+                    query += " GROUP BY 1, 2, 3"
+                    map_df = conn.execute(query, params).df()
+                    region_label = selected_district if selected_district != "All Districts" else selected_state
+                    st.caption(f"{len(map_df)} stops in {region_label}.")
+                    point_radius = 80
+                    zoom = 9 if selected_district != "All Districts" else 7.5
 
-                layer = pdk.Layer(
-                    "ScatterplotLayer",
-                    data=map_df,
-                    get_position=["lon", "lat"],
-                    get_radius=point_radius,
-                    get_fill_color=["color_r", "color_g", "color_b", 200],
-                    pickable=True,
-                )
-                view_state = pdk.ViewState(
-                    latitude=float(map_df["lat"].mean()),
-                    longitude=float(map_df["lon"].mean()),
-                    zoom=zoom,
-                )
-                st.pydeck_chart(pdk.Deck(
-                    layers=[layer],
-                    initial_view_state=view_state,
-                    tooltip={
-                        "text": "{label}\nAvg delay: {avg_delay_minutes} min\n"
-                                "% delayed: {delayed_percentage}\nObservations: {total_observations}"
-                    },
-                ))
+                if map_df.empty:
+                    st.info("No geolocated observations for this selection yet.")
+                else:
+                    bands = map_df[color_metric].apply(lambda v: severity_band(v, *thresholds))
+                    rgb = bands.map(STATUS_COLORS_RGB)
+                    map_df["color_r"] = rgb.apply(lambda t: t[0])
+                    map_df["color_g"] = rgb.apply(lambda t: t[1])
+                    map_df["color_b"] = rgb.apply(lambda t: t[2])
+
+                    layer = pdk.Layer(
+                        "ScatterplotLayer",
+                        data=map_df,
+                        get_position=["lon", "lat"],
+                        get_radius=point_radius,
+                        get_fill_color=["color_r", "color_g", "color_b", 200],
+                        pickable=True,
+                    )
+                    view_state = pdk.ViewState(
+                        latitude=float(map_df["lat"].mean()),
+                        longitude=float(map_df["lon"].mean()),
+                        zoom=zoom,
+                    )
+                    st.pydeck_chart(pdk.Deck(
+                        layers=[layer],
+                        initial_view_state=view_state,
+                        tooltip={
+                            "text": "{label}\nAvg delay: {avg_delay_minutes} min\n"
+                                    "% delayed: {delayed_percentage}\nObservations: {total_observations}"
+                        },
+                    ))
 
         # --- Performance (state -> district -> municipality drill-down) ---
         with tab_performance:
@@ -245,6 +398,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                     SELECT state_name, COUNT(*) AS total_observations,
                            AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
                            MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                           STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
                            QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
                            SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
                     FROM int_trip_delays_enriched
@@ -263,6 +417,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                     SELECT district_name, COUNT(*) AS total_observations,
                            AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
                            MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                           STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
                            SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
                     FROM int_trip_delays_enriched
                     WHERE state_name = ? AND district_name IS NOT NULL {mode_clause}
@@ -277,6 +432,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                     SELECT municipality_name, COUNT(*) AS total_observations,
                            AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
                            MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                           STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
                            QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
                            SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
                     FROM int_trip_delays_enriched
@@ -309,6 +465,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                        COUNT(DISTINCT route_id) AS distinct_routes,
                        AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
                        MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
                        QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
                        SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
                 FROM int_trip_delays_enriched
@@ -344,7 +501,10 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 sort_by = st.selectbox(
-                    "Sort by", ["delayed_percentage", "p90_delay_minutes", "avg_delay_minutes", "total_observations"],
+                    "Sort by",
+                    ["delayed_pct_wilson_lower_bound", "delayed_percentage", "p90_delay_minutes",
+                     "avg_delay_minutes", "delay_stddev_minutes", "total_observations"],
+                    format_func=lambda v: "Delayed % (confidence-adjusted)" if v == "delayed_pct_wilson_lower_bound" else v,
                     key="routes_sort_by",
                 )
             with col2:
@@ -353,6 +513,12 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 min_obs = st.slider("Min. observations", 20, 500, 20, key="routes_min_obs")
             with col4:
                 row_limit = st.slider("Rows to show", 10, 200, 50, key="routes_limit")
+            st.caption(
+                "\"Delayed % (confidence-adjusted)\" is a Wilson score lower bound, not the raw "
+                "percentage — a route with 21 observations at 100% delayed isn't actually as "
+                "certain to be bad as one with 5,000 at 95%; this shrinks small samples toward "
+                "uncertainty instead of taking the raw rate at face value."
+            )
 
             routes_where = ["route_id IS NOT NULL", "route_id != ''"]
             routes_params = []
@@ -369,13 +535,18 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 routes_where.append("agency_name = ?")
                 routes_params.append(selected_agency)
 
+            wilson_expr = wilson_lower_bound_sql(
+                "SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END)", "COUNT(*)"
+            )
             routes_df = conn.execute(f"""
                 SELECT route_id, route_short_name, agency_name, route_type_label,
                        COUNT(*) AS total_observations,
                        AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
                        MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
                        QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
-                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
+                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage,
+                       {wilson_expr} * 100 AS delayed_pct_wilson_lower_bound
                 FROM int_trip_delays_enriched
                 WHERE {' AND '.join(routes_where)}
                 GROUP BY 1, 2, 3, 4
@@ -386,6 +557,56 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 st.info("No routes match this filter combination.")
             else:
                 st.dataframe(routes_df.drop(columns=["route_id"]), width="stretch")
+
+        # --- Agency: performance scorecard (distinct from Coverage's "does it report RT at all") ---
+        with tab_agency:
+            st.caption(
+                "Respects the full sidebar (state/district/mode). A different question from the "
+                "Coverage tab: this asks 'how reliable is this agency's service', not 'does it "
+                "report realtime data at all' — only agencies with real observations appear here."
+            )
+            agc1, agc2 = st.columns(2)
+            with agc1:
+                agency_sort_by = st.selectbox(
+                    "Sort by",
+                    ["delayed_percentage", "avg_delay_minutes", "delay_stddev_minutes",
+                     "p90_delay_minutes", "total_observations"],
+                    key="agency_sort_by",
+                )
+            with agc2:
+                agency_min_obs = st.slider("Min. observations", 20, 1000, 20, key="agency_min_obs")
+
+            agency_where = ["agency_id IS NOT NULL"]
+            agency_params = []
+            if selected_state != "All Germany":
+                agency_where.append("state_name = ?")
+                agency_params.append(selected_state)
+                if selected_district != "All Districts":
+                    agency_where.append("district_name = ?")
+                    agency_params.append(selected_district)
+            if selected_mode != "All Modes":
+                agency_where.append("route_type_label = ?")
+                agency_params.append(selected_mode)
+
+            agency_df = conn.execute(f"""
+                SELECT agency_id, agency_name,
+                       COUNT(*) AS total_observations,
+                       COUNT(DISTINCT route_id) AS distinct_routes,
+                       AVG(arrival_delay_sec) / 60.0 AS avg_delay_minutes,
+                       MEDIAN(arrival_delay_sec) / 60.0 AS median_delay_minutes,
+                       STDDEV(arrival_delay_sec) / 60.0 AS delay_stddev_minutes,
+                       QUANTILE_CONT(arrival_delay_sec, 0.9) / 60.0 AS p90_delay_minutes,
+                       SUM(CASE WHEN is_delayed THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS delayed_percentage
+                FROM int_trip_delays_enriched
+                WHERE {' AND '.join(agency_where)}
+                GROUP BY 1, 2
+                HAVING COUNT(*) >= ?
+                ORDER BY {agency_sort_by} DESC
+            """, agency_params + [agency_min_obs]).df()
+            if agency_df.empty:
+                st.info("No agencies match this filter combination.")
+            else:
+                st.dataframe(agency_df.drop(columns=["agency_id"]), width="stretch")
 
         # --- Trends: delay over polling history for the current selection ---
         with tab_trends:
