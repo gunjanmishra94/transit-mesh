@@ -1,0 +1,107 @@
+name: Static GTFS refresh
+
+# Daily nationwide static GTFS snapshot + stop-boundary enrichment + dbt
+# build against MotherDuck. Mirrors orchestrator/definitions.py's
+# `static_gtfs_job` (static_gtfs_asset + stg_gtfs_stops_enriched_asset + dbt
+# build) — deliberately does NOT touch admin boundaries (see
+# admin-boundaries.yml), same split as the Dagster job it replaces.
+on:
+  schedule:
+    # 03:17, not 03:00 — offset off the hour to avoid the traffic spike of
+    # everyone else's midnight/top-of-hour cron jobs on shared runners.
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+# Shared with rt-ingestion.yml and admin-boundaries.yml: all three write to
+# the same MotherDuck database, and DuckDB is single-writer, so runs across
+# all pipeline workflows must queue rather than overlap.
+concurrency:
+  group: motherduck-writer
+  cancel-in-progress: false
+
+env:
+  DUCKDB_PATH: "md:transit_mesh"
+  # GitHub Actions rejects env keys that only differ by case as duplicates,
+  # so only one casing can be set here — ingestion/duckdb_utils.py checks
+  # both MOTHERDUCK_TOKEN and motherduck_token, so either works.
+  MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Debug context
+        run: |
+          set -euxo pipefail
+          echo "run_id=${{ github.run_id }} attempt=${{ github.run_attempt }} triggered_by=${{ github.event_name }}"
+          echo "commit=${{ github.sha }}"
+          echo "DUCKDB_PATH=$DUCKDB_PATH"
+          uv run python --version
+          uv run dbt --version
+
+      - name: Fetch nationwide static GTFS
+        run: |
+          set -euxo pipefail
+          uv run python -m ingestion.fetch_static_gtfs
+
+      - name: Enrich stops with admin boundaries
+        run: |
+          set -euxo pipefail
+          uv run python -m ingestion.enrich_stops_with_boundaries
+
+      - name: dbt deps
+        run: |
+          set -euxo pipefail
+          cd dbt_transit && uv run --project .. dbt deps --profiles-dir .
+
+      - name: dbt build
+        run: |
+          set -euxo pipefail
+          cd dbt_transit && uv run --project .. dbt build --profiles-dir .
+
+      - name: dbt build summary
+        if: always()
+        run: |
+          set -euxo pipefail
+          echo "## dbt build — static GTFS refresh" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f dbt_transit/target/run_results.json ]; then
+            jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
+              dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "(no run_results.json — the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dump dbt log tail on failure
+        if: failure()
+        run: |
+          echo '--- dbt_transit/logs/dbt.log (last 300 lines) ---'
+          tail -n 300 dbt_transit/logs/dbt.log 2>/dev/null || echo "(no dbt.log found)"
+
+      - name: Upload dbt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-artifacts-static-gtfs-${{ github.run_id }}
+          path: |
+            dbt_transit/target/run_results.json
+            dbt_transit/target/manifest.json
+            dbt_transit/logs/dbt.log
+          retention-days: 7
+          if-no-files-found: ignore

@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 from google.transit import gtfs_realtime_pb2
 
-from ingestion.duckdb_utils import connect_with_retry
+from ingestion.duckdb_utils import connect_with_retry, ensure_local_db_dir
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 RT_URL = "https://realtime.gtfs.de/realtime-free.pb"
@@ -78,7 +78,7 @@ def ingest_gtfs_rt():
     trip_update_records = parse_trip_updates(feed, feed_timestamp, ingested_at)
     alert_records = parse_service_alerts(feed, feed_timestamp, ingested_at)
 
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    ensure_local_db_dir(DB_PATH)
     conn = connect_with_retry(DB_PATH)
 
     conn.execute("""

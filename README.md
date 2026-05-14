@@ -38,6 +38,52 @@ make app
 
 Map / Performance / Trends / Coverage tabs, with a state → district → municipality drill-down in the sidebar.
 
+## Deployment (free)
+
+The local stack above (Dagster daemon + local DuckDB file) doesn't fit any
+free host — there's no persistent-background-worker free tier, and the
+local `transit.duckdb` file is multiple GB. The free deploy instead swaps
+two pieces:
+
+| Local | Free deploy |
+|---|---|
+| Local DuckDB file | [MotherDuck](https://motherduck.com) (free tier) — `DUCKDB_PATH=md:transit_mesh` |
+| Dagster daemon (`* * * * *` / daily schedules) | GitHub Actions (`.github/workflows/`) on the same cadence, best-effort |
+| `make app` on your machine | [Streamlit Community Cloud](https://streamlit.io/cloud) (free) |
+
+Setup, once:
+
+1. Create a free [MotherDuck](https://app.motherduck.com) account and a
+   database named `transit_mesh`. Grab a token from Settings -> Tokens.
+2. **Bootstrap the database once, locally** — the scheduled workflows below
+   only *refresh* tables, and `enrich_stops_with_boundaries` needs both
+   static GTFS stops and VG250 boundaries to already exist the first time:
+   ```bash
+   DUCKDB_PATH=md:transit_mesh MOTHERDUCK_TOKEN=<your-token> make pipeline
+   ```
+3. In the GitHub repo, add `MOTHERDUCK_TOKEN` as an Actions secret (Settings
+   -> Secrets and variables -> Actions -> New repository secret).
+4. From then on, three workflows keep MotherDuck fresh — all read-only to
+   debug, since each run's log and `dbt build` summary show up under the
+   Actions tab, plus uploaded `manifest.json`/`run_results.json`/`dbt.log`
+   artifacts on every run:
+   - `rt-ingestion.yml` — every 15 min, GTFS-RT poll + `dbt build`.
+   - `static-gtfs.yml` — daily at 03:17, static GTFS refresh + `dbt build`.
+   - `admin-boundaries.yml` — manual only (`workflow_dispatch`), VG250
+     updates ~annually.
+
+   All three share a `motherduck-writer` concurrency group so they queue
+   instead of racing each other for the single-writer database lock.
+5. Deploy `app/main.py` to Streamlit Community Cloud pointed at this repo
+   (`requirements.txt` at the repo root is scoped for it — see the comment
+   in that file for why it's separate from `pyproject.toml`). In the app's
+   Secrets editor, set the keys shown in `.streamlit/secrets.toml.example`
+   (`DUCKDB_PATH=md:transit_mesh` + your MotherDuck token, both env-var
+   casings).
+
+Local dev (`make app`, `make pipeline`, `make dagster*`) is unaffected —
+`DUCKDB_PATH` still defaults to the local file when unset.
+
 ## Data sources (all public, no registration — see `project_blueprint.md` §2)
 
 | Source | License | Cadence |

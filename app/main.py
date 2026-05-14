@@ -18,6 +18,21 @@ from ingestion.duckdb_utils import connect_with_retry  # noqa: E402
 
 st.set_page_config(page_title="German Transit Intelligence", layout="wide")
 
+# Streamlit Community Cloud injects secrets.toml entries into st.secrets, not
+# into the process environment — mirror them into os.environ here so the
+# rest of the app (and connect_with_retry's MotherDuck token lookup) can
+# keep reading plain env vars regardless of which host it's running on.
+# st.secrets raises StreamlitSecretNotFoundError outright (not just an empty
+# mapping) when no secrets.toml exists at all, which is the normal case for
+# local dev against the local DuckDB file.
+try:
+    _secrets = dict(st.secrets)
+except st.errors.StreamlitSecretNotFoundError:
+    _secrets = {}
+for _key in ("DUCKDB_PATH", "MOTHERDUCK_TOKEN", "motherduck_token"):
+    if _key not in os.environ and _key in _secrets:
+        os.environ[_key] = _secrets[_key]
+
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 
 
@@ -42,10 +57,16 @@ try:
     with get_db_connection() as _conn:
         _conn.execute("SELECT 1 FROM mrt_performance_national LIMIT 1")
 except Exception as e:
-    if not os.path.exists(DB_PATH):
+    # os.path.exists is only meaningful for a local file path — a
+    # MotherDuck `md:...` DB_PATH is never a real filesystem path, so this
+    # check must be skipped for it (it would otherwise always read as
+    # "missing" and hide the real exception behind a misleading message).
+    if not DB_PATH.startswith("md:") and not os.path.exists(DB_PATH):
         st.error(
-            "DuckDB file not found — the pipeline hasn't run yet. "
-            "Run ingestion + `dbt build` first (see README)."
+            f"DuckDB file not found at `{DB_PATH}`. Either the pipeline hasn't "
+            "run yet (see README), or DUCKDB_PATH/MOTHERDUCK_TOKEN aren't set "
+            "in this app's Secrets — this fell back to the local-file default, "
+            "which doesn't exist on a cloud deploy."
         )
     else:
         st.error(

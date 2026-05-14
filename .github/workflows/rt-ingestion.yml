@@ -1,0 +1,117 @@
+name: Realtime ingestion
+
+# GTFS-RT polling + dbt build against MotherDuck. Mirrors
+# orchestrator/definitions.py's `realtime_job` (raw_gtfs_rt_asset + dbt
+# build), which only runs locally under `dagster dev`/`dagster-daemon` — this
+# is the free, always-on substitute for that schedule.
+#
+# Every 15 min, not every 1 min like the local Dagster schedule: GitHub's
+# cron minimum is 5 min, scheduled runs are best-effort and get silently
+# delayed/dropped under platform load, and each run has ~20-30s of fixed
+# checkout/install overhead — 1 min cadence would just pile up queued runs.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+# All three pipeline workflows write to the same MotherDuck database.
+# DuckDB (MotherDuck included) is single-writer, so overlapping runs must
+# queue rather than run concurrently or get cancelled mid-write.
+concurrency:
+  group: motherduck-writer
+  cancel-in-progress: false
+
+env:
+  DUCKDB_PATH: "md:transit_mesh"
+  # GitHub Actions rejects env keys that only differ by case as duplicates,
+  # so only one casing can be set here — ingestion/duckdb_utils.py checks
+  # both MOTHERDUCK_TOKEN and motherduck_token, so either works.
+  MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Debug context
+        run: |
+          set -euxo pipefail
+          echo "run_id=${{ github.run_id }} attempt=${{ github.run_attempt }} triggered_by=${{ github.event_name }}"
+          echo "commit=${{ github.sha }}"
+          echo "DUCKDB_PATH=$DUCKDB_PATH"
+          uv run python --version
+          uv run python -c "import duckdb; print('duckdb', duckdb.__version__)"
+          uv run dbt --version
+
+      - name: Verify MotherDuck connectivity
+        run: |
+          set -euxo pipefail
+          uv run python - <<'PY'
+          import os
+          from ingestion.duckdb_utils import connect_with_retry
+
+          conn = connect_with_retry(os.environ["DUCKDB_PATH"], read_only=True)
+          print(conn.execute("select current_database(), current_schema()").fetchall())
+          conn.close()
+          PY
+
+      - name: Fetch realtime GTFS-RT feed
+        run: |
+          set -euxo pipefail
+          uv run python -m ingestion.fetch_rt
+
+      - name: dbt deps
+        run: |
+          set -euxo pipefail
+          cd dbt_transit && uv run --project .. dbt deps --profiles-dir .
+
+      - name: dbt build
+        run: |
+          set -euxo pipefail
+          cd dbt_transit && uv run --project .. dbt build --profiles-dir .
+
+      - name: dbt build summary
+        if: always()
+        run: |
+          set -euxo pipefail
+          echo "## dbt build — realtime ingestion" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f dbt_transit/target/run_results.json ]; then
+            jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
+              dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "(no run_results.json — the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dump dbt log tail on failure
+        if: failure()
+        run: |
+          echo '--- dbt_transit/logs/dbt.log (last 300 lines) ---'
+          tail -n 300 dbt_transit/logs/dbt.log 2>/dev/null || echo "(no dbt.log found)"
+
+      - name: Upload dbt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-artifacts-rt-ingestion-${{ github.run_id }}
+          path: |
+            dbt_transit/target/run_results.json
+            dbt_transit/target/manifest.json
+            dbt_transit/logs/dbt.log
+          retention-days: 7
+          if-no-files-found: ignore

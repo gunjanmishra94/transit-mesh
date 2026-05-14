@@ -2,13 +2,16 @@
         dbt-deps dbt-build dbt-test pipeline dagster dagster-rt dagster-static \
         dagster-boundaries app
 
-# Pinned absolute rather than left relative: dbt's own subprocess runs with
-# cwd=dbt_transit/, so a relative value resolves against the wrong directory
-# for that step. This covers every target here EXCEPT the dagster-* targets
-# below — Dagster's own CLI auto-loads .env from the invocation directory and
-# that overrides this for the whole process, which is why `make setup`
-# generates .env with an absolute path too (see .env.example).
-export DUCKDB_PATH := $(CURDIR)/duckdb_data/transit.duckdb
+# Defaults to a pinned absolute local path — not relative, since dbt's own
+# subprocess runs with cwd=dbt_transit/, so a relative value resolves against
+# the wrong directory for that step. `?=` only applies this default when
+# DUCKDB_PATH isn't already set in the calling environment, so CI (or anyone
+# deploying against MotherDuck) can `DUCKDB_PATH=md:transit_mesh make ...`
+# and have every target below honor it. This covers every target here EXCEPT
+# the dagster-* targets — Dagster's own CLI auto-loads .env from the
+# invocation directory instead, which is why `make setup` generates .env
+# with an absolute path too (see .env.example).
+export DUCKDB_PATH ?= $(CURDIR)/duckdb_data/transit.duckdb
 
 help:
 	@echo "setup              uv sync + generate .env with an absolute DUCKDB_PATH"

@@ -4,7 +4,7 @@ import zipfile
 
 import requests
 
-from ingestion.duckdb_utils import connect_with_retry
+from ingestion.duckdb_utils import connect_with_retry, ensure_local_db_dir
 
 DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 VG250_URL = "https://daten.gdz.bkg.bund.de/produkte/vg/vg250_ebenen_0101/aktuell/vg250_01-01.utm32s.gpkg.ebenen.zip"
@@ -75,7 +75,7 @@ def load_admin_boundaries():
     zip_path = download_vg250()
     gpkg_path = extract_geopackage(zip_path, CACHE_DIR)
 
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    ensure_local_db_dir(DB_PATH)
     conn = connect_with_retry(DB_PATH)
     conn.execute("INSTALL spatial; LOAD spatial;")
 

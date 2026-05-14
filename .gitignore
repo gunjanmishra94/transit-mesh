@@ -1,4 +1,6 @@
 .env
+.streamlit/secrets.toml
+mother_duck_token.txt
 duckdb_data/*.duckdb
 duckdb_data/*.duckdb.wal
 ingestion/.cache/
