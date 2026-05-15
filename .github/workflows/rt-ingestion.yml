@@ -5,13 +5,15 @@ name: Realtime ingestion
 # build), which only runs locally under `dagster dev`/`dagster-daemon` — this
 # is the free, always-on substitute for that schedule.
 #
-# Every 15 min, not every 1 min like the local Dagster schedule: GitHub's
-# cron minimum is 5 min, scheduled runs are best-effort and get silently
-# delayed/dropped under platform load, and each run has ~20-30s of fixed
-# checkout/install overhead — 1 min cadence would just pile up queued runs.
+# Every 5 min (GitHub's technical minimum), not every 1 min like the local
+# Dagster schedule. Scheduled runs are still best-effort and can be
+# silently delayed/dropped under GitHub's platform load, and the
+# motherduck-writer concurrency lock below means a slow run pushes the
+# next one back — 5 min is a deliberate tradeoff of freshness against that
+# risk, not a guarantee of hitting it every time.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 # All three pipeline workflows write to the same MotherDuck database.
