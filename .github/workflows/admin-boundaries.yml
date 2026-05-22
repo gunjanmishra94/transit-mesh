@@ -7,6 +7,13 @@ name: Admin boundaries refresh (manual)
 on:
   workflow_dispatch: {}
 
+# Realtime and static-GTFS ingestion moved to a live dagster-daemon on
+# Render (see orchestrator/definitions.py's schedules); this is the only
+# pipeline workflow left here since admin_boundaries_job has no schedule
+# there either — kept as a convenient manual trigger. This concurrency
+# group only ever queued GitHub Actions runs against each other, not
+# against the daemon on Render — that overlap is coordinated by
+# MotherDuck's own single-writer locking instead, same as before.
 concurrency:
   group: motherduck-writer
   cancel-in-progress: false

@@ -19,4 +19,4 @@ make app        # launch the Streamlit dashboard
 ## Deployed
 
 - **Dashboard:** [transitmesh-de.streamlit.app](https://transitmesh-de.streamlit.app/)
-- **Pipeline runs (GitHub Actions):** [github.com/gunjanmishra94/transit-mesh/actions](https://github.com/gunjanmishra94/transit-mesh/actions) — realtime ingestion every 5 min, static GTFS refresh daily, both building on a shared [MotherDuck](https://motherduck.com) database.
+- **Pipeline runs:** a `dagster-daemon` (see `Dockerfile`/`deploy/start.sh`) schedules realtime ingestion every minute and a static GTFS refresh daily, both building on a shared [MotherDuck](https://motherduck.com) database. Admin-boundary refreshes stay a manual [GitHub Actions](https://github.com/gunjanmishra94/transit-mesh/actions) trigger, since that job has no schedule either way.

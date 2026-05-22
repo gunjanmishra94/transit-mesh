@@ -5,6 +5,7 @@ from dagster import (
     AssetKey,
     AssetOut,
     AssetSelection,
+    DefaultScheduleStatus,
     Definitions,
     Output,
     ScheduleDefinition,
@@ -101,7 +102,13 @@ realtime_job = define_asset_job(
     "realtime_ingestion_job",
     selection=AssetSelection.assets(raw_gtfs_rt_asset) | AssetSelection.assets(dbt_transit_assets),
 )
-realtime_schedule = ScheduleDefinition(job=realtime_job, cron_schedule="* * * * *")
+# default_status=RUNNING: this project's daemon runs headless on Render
+# (no webserver exposed to click "start" on in the UI), so schedules need
+# to come up active on a fresh DAGSTER_HOME rather than defaulting to
+# stopped.
+realtime_schedule = ScheduleDefinition(
+    job=realtime_job, cron_schedule="* * * * *", default_status=DefaultScheduleStatus.RUNNING
+)
 
 # Static GTFS is a full daily snapshot from DELFI (blueprint §2.1).
 static_gtfs_job = define_asset_job(
@@ -112,7 +119,9 @@ static_gtfs_job = define_asset_job(
         | AssetSelection.assets(dbt_transit_assets)
     ),
 )
-static_gtfs_schedule = ScheduleDefinition(job=static_gtfs_job, cron_schedule="0 3 * * *")
+static_gtfs_schedule = ScheduleDefinition(
+    job=static_gtfs_job, cron_schedule="0 3 * * *", default_status=DefaultScheduleStatus.RUNNING
+)
 
 # VG250 boundaries update roughly annually — no cron schedule; trigger this
 # job manually from the Dagster UI when a new VG250 release comes out.

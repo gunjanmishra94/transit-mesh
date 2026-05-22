@@ -1,0 +1,18 @@
+# Render Blueprint for transit-mesh. Deploy via Render's "New +" -> "Blueprint"
+# pointing at this repo, then set MOTHERDUCK_TOKEN in the dashboard (secrets
+# aren't allowed in this file). The portfolio static site is a separate repo
+# and is set up as its own Render Static Site, not part of this blueprint.
+services:
+  - type: web
+    name: transit-mesh
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: DUCKDB_PATH
+        value: md:transit_mesh
+      - key: MOTHERDUCK_TOKEN
+        sync: false
+      - key: DAGSTER_HOME
+        value: /app/.dagster_home
