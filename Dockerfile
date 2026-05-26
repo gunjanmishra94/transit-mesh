@@ -1,7 +1,10 @@
-# Single container for Render: runs the Streamlit dashboard (the one
-# externally-reachable process, on $PORT) and dagster-daemon (schedules
-# realtime_ingestion_job/static_gtfs_job against MotherDuck) side by side.
-# See deploy/start.sh for how the two processes are supervised.
+# Streamlit-only container for Render. Ingestion scheduling lives in
+# GitHub Actions (see .github/workflows/), not here — an earlier attempt
+# ran dagster-daemon in this same container to own scheduling instead, but
+# a live realtime job (dbt build against MotherDuck, every minute) plus
+# Streamlit blew past Render's free-tier 512MB and OOM-crash-looped the
+# instance. app/main.py only reads from MotherDuck directly; it doesn't
+# touch dbt_transit or orchestrator/, so this image doesn't need either.
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 WORKDIR /app
@@ -19,23 +22,7 @@ RUN uv sync --locked
 
 COPY . .
 
-# Bakes dbt_utils into the image so the container doesn't need a
-# dbt-deps network round trip on every cold start (Render's free-tier
-# filesystem doesn't persist dbt_packages/ across deploys anyway).
-RUN cd dbt_transit && uv run --project .. --no-sync dbt deps --profiles-dir .
-
-# Bakes target/manifest.json into the image too, against a throwaway local
-# DuckDB file (dbt parse doesn't execute against the warehouse, so no
-# MotherDuck token needed here). Without this, orchestrator/definitions.py
-# runs `dbt parse` itself on first import — fine on a real machine, but on
-# Render's free-tier 0.1 vCPU it was slow enough to blow dagster-daemon's
-# code-server heartbeat timeout, crash-looping the grpc subprocess and
-# starving Streamlit of CPU on the same instance.
-RUN cd dbt_transit && DUCKDB_PATH=/tmp/dbt_parse.duckdb uv run --project .. --no-sync dbt parse --profiles-dir .
-
-ENV PYTHONUNBUFFERED=1 \
-    DAGSTER_HOME=/app/.dagster_home
-RUN mkdir -p "$DAGSTER_HOME"
+ENV PYTHONUNBUFFERED=1
 
 RUN chmod +x deploy/start.sh
 

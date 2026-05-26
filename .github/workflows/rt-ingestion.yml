@@ -1,12 +1,24 @@
-name: Admin boundaries refresh (manual)
+name: Realtime ingestion
 
-# BKG VG250 administrative boundaries update roughly annually — no schedule,
-# same as orchestrator/definitions.py's admin_boundaries_job, which is
-# "manual trigger only" there too. Run this by hand from the Actions tab
-# when a new VG250 release comes out.
+# GTFS-RT polling + dbt build against MotherDuck. Mirrors
+# orchestrator/definitions.py's `realtime_job` (raw_gtfs_rt_asset + dbt
+# build), which only runs locally under `dagster dev`/`dagster-daemon` — this
+# is the free, always-on substitute for that schedule.
+#
+# Every 5 min (GitHub's technical minimum), not every 1 min like the local
+# Dagster schedule. Scheduled runs are still best-effort and can be
+# silently delayed/dropped under GitHub's platform load, and the
+# motherduck-writer concurrency lock below means a slow run pushes the
+# next one back — 5 min is a deliberate tradeoff of freshness against that
+# risk, not a guarantee of hitting it every time.
 on:
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
+# All three pipeline workflows write to the same MotherDuck database.
+# DuckDB (MotherDuck included) is single-writer, so overlapping runs must
+# queue rather than run concurrently or get cancelled mid-write.
 concurrency:
   group: motherduck-writer
   cancel-in-progress: false
@@ -19,9 +31,9 @@ env:
   MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
 
 jobs:
-  refresh:
+  ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,17 +58,25 @@ jobs:
           echo "commit=${{ github.sha }}"
           echo "DUCKDB_PATH=$DUCKDB_PATH"
           uv run python --version
+          uv run python -c "import duckdb; print('duckdb', duckdb.__version__)"
           uv run dbt --version
 
-      - name: Fetch BKG VG250 admin boundaries
+      - name: Verify MotherDuck connectivity
         run: |
           set -euxo pipefail
-          uv run python -m ingestion.fetch_admin_boundaries
+          uv run python - <<'PY'
+          import os
+          from ingestion.duckdb_utils import connect_with_retry
 
-      - name: Enrich stops with admin boundaries
+          conn = connect_with_retry(os.environ["DUCKDB_PATH"], read_only=True)
+          print(conn.execute("select current_database(), current_schema()").fetchall())
+          conn.close()
+          PY
+
+      - name: Fetch realtime GTFS-RT feed
         run: |
           set -euxo pipefail
-          uv run python -m ingestion.enrich_stops_with_boundaries
+          uv run python -m ingestion.fetch_rt
 
       - name: dbt deps
         run: |
@@ -72,7 +92,7 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          echo "## dbt build — admin boundaries refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "## dbt build — realtime ingestion" >> "$GITHUB_STEP_SUMMARY"
           if [ -f dbt_transit/target/run_results.json ]; then
             jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
               dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
@@ -90,7 +110,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dbt-artifacts-admin-boundaries-${{ github.run_id }}
+          name: dbt-artifacts-rt-ingestion-${{ github.run_id }}
           path: |
             dbt_transit/target/run_results.json
             dbt_transit/target/manifest.json

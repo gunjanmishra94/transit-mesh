@@ -1,12 +1,20 @@
-name: Admin boundaries refresh (manual)
+name: Static GTFS refresh
 
-# BKG VG250 administrative boundaries update roughly annually — no schedule,
-# same as orchestrator/definitions.py's admin_boundaries_job, which is
-# "manual trigger only" there too. Run this by hand from the Actions tab
-# when a new VG250 release comes out.
+# Daily nationwide static GTFS snapshot + stop-boundary enrichment + dbt
+# build against MotherDuck. Mirrors orchestrator/definitions.py's
+# `static_gtfs_job` (static_gtfs_asset + stg_gtfs_stops_enriched_asset + dbt
+# build) — deliberately does NOT touch admin boundaries (see
+# admin-boundaries.yml), same split as the Dagster job it replaces.
 on:
+  schedule:
+    # 03:17, not 03:00 — offset off the hour to avoid the traffic spike of
+    # everyone else's midnight/top-of-hour cron jobs on shared runners.
+    - cron: "17 3 * * *"
   workflow_dispatch: {}
 
+# Shared with rt-ingestion.yml and admin-boundaries.yml: all three write to
+# the same MotherDuck database, and DuckDB is single-writer, so runs across
+# all pipeline workflows must queue rather than overlap.
 concurrency:
   group: motherduck-writer
   cancel-in-progress: false
@@ -48,10 +56,10 @@ jobs:
           uv run python --version
           uv run dbt --version
 
-      - name: Fetch BKG VG250 admin boundaries
+      - name: Fetch nationwide static GTFS
         run: |
           set -euxo pipefail
-          uv run python -m ingestion.fetch_admin_boundaries
+          uv run python -m ingestion.fetch_static_gtfs
 
       - name: Enrich stops with admin boundaries
         run: |
@@ -72,7 +80,7 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          echo "## dbt build — admin boundaries refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "## dbt build — static GTFS refresh" >> "$GITHUB_STEP_SUMMARY"
           if [ -f dbt_transit/target/run_results.json ]; then
             jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
               dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
@@ -90,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dbt-artifacts-admin-boundaries-${{ github.run_id }}
+          name: dbt-artifacts-static-gtfs-${{ github.run_id }}
           path: |
             dbt_transit/target/run_results.json
             dbt_transit/target/manifest.json

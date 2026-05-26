@@ -14,5 +14,3 @@ services:
         value: md:transit_mesh
       - key: MOTHERDUCK_TOKEN
         sync: false
-      - key: DAGSTER_HOME
-        value: /app/.dagster_home
