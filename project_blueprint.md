@@ -309,7 +309,7 @@ except Exception:
     st.error("DuckDB file not found or not initialized yet. Run ingestion first.")
     st.stop()
 
-st.title("🇩🇪 Nationwide Transit Intelligence Platform")
+st.title("🇩🇪 Deutsche Transit Intelligence Platform")
 st.markdown("Real-time telemetry, delay propagation, and spatial analytics from country to village level.")
 
 # Sidebar Filters for Hierarchy Drill-Down

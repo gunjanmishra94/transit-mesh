@@ -150,7 +150,7 @@ def build_choropleth_layer(merged_df, color_metric, thresholds):
     return {"type": "FeatureCollection", "features": features}
 
 
-st.title("🇩🇪 Nationwide Transit Intelligence Platform")
+st.title("🇩🇪 Deutsche Transit Intelligence Platform")
 st.markdown("Real-time telemetry, delay propagation, and spatial analytics from country to village level.")
 
 # --- Sidebar drill-down, shared across tabs ---
