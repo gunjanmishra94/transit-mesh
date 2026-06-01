@@ -12,14 +12,14 @@ import streamlit as st
 # Explicit rather than relying on how `streamlit run` sets up sys.path: this
 # script needs the sibling `ingestion` package, and Streamlit's own script
 # loader isn't guaranteed to put the repo root on the path the way `python -m`
-# does (this bit us for the ingestion scripts themselves — see Makefile).
+# does (this bit us for the ingestion scripts themselves, see Makefile).
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from ingestion.duckdb_utils import connect_with_retry  # noqa: E402
 
 st.set_page_config(page_title="German Transit Intelligence", layout="wide")
 
 # Streamlit Community Cloud injects secrets.toml entries into st.secrets, not
-# into the process environment — mirror them into os.environ here so the
+# into the process environment, mirror them into os.environ here so the
 # rest of the app (and connect_with_retry's MotherDuck token lookup) can
 # keep reading plain env vars regardless of which host it's running on.
 # st.secrets raises StreamlitSecretNotFoundError outright (not just an empty
@@ -40,7 +40,7 @@ DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 def get_db_connection():
     # Deliberately not cached/persistent: DuckDB is single-writer, and no
     # writer (Dagster's ingestion jobs, dbt build) can open the file at all
-    # while ANY reader has it open — a persistent connection held for the
+    # while ANY reader has it open, a persistent connection held for the
     # life of the browser session would permanently block the pipeline.
     # Opening fresh per query batch and closing immediately keeps the lock
     # window down to milliseconds instead of "as long as the tab is open."
@@ -57,7 +57,7 @@ try:
     with get_db_connection() as _conn:
         _conn.execute("SELECT 1 FROM mrt_performance_national LIMIT 1")
 except Exception as e:
-    # os.path.exists is only meaningful for a local file path — a
+    # os.path.exists is only meaningful for a local file path, a
     # MotherDuck `md:...` DB_PATH is never a real filesystem path, so this
     # check must be skipped for it (it would otherwise always read as
     # "missing" and hide the real exception behind a misleading message).
@@ -65,18 +65,18 @@ except Exception as e:
         st.error(
             f"DuckDB file not found at `{DB_PATH}`. Either the pipeline hasn't "
             "run yet (see README), or DUCKDB_PATH/MOTHERDUCK_TOKEN aren't set "
-            "in this app's Secrets — this fell back to the local-file default, "
+            "in this app's Secrets, this fell back to the local-file default, "
             "which doesn't exist on a cloud deploy."
         )
     else:
         st.error(
-            f"Could not open the database after retrying — it may be held by a "
+            f"Could not open the database after retrying, it may be held by a "
             f"long-running write (a full `make pipeline` run, for example). "
             f"Try reloading in a few seconds.\n\nDetails: {e}"
         )
     st.stop()
 
-# Status palette from the dataviz skill (references/palette.md) — fixed,
+# Status palette from the dataviz skill (references/palette.md), fixed,
 # never themed, and validated to stay distinct from the categorical chart
 # slots. Used as discrete severity bands on the map rather than a
 # continuous RGB fade: a status palette encodes STATE, not magnitude, so
@@ -101,7 +101,7 @@ def severity_band(value, good_max, warning_max, serious_max):
 
 
 def wilson_lower_bound_sql(successes_expr, n_expr, z=1.96):
-    # Mirrors dbt_transit/macros/wilson_lower_bound.sql — used here for tabs
+    # Mirrors dbt_transit/macros/wilson_lower_bound.sql, used here for tabs
     # that query int_trip_delays_enriched live (Routes, Agency) rather than
     # the pre-materialized mrt_performance_by_route, which already has this
     # baked in via the dbt macro.
@@ -116,7 +116,7 @@ def wilson_lower_bound_sql(successes_expr, n_expr, z=1.96):
 @st.cache_data(ttl=86400)
 def get_state_geometries():
     # VG250 updates ~annually and this is a multi-MB payload (5.9MB for all
-    # 16 states) — cached separately from the frequently-changing delay
+    # 16 states), cached separately from the frequently-changing delay
     # stats so the 30s auto-refresh doesn't re-fetch/re-transform geometry
     # that never changes within a session.
     with get_db_connection() as conn:
@@ -185,7 +185,7 @@ st.sidebar.caption("Applies to Map, Performance, Trends, Routes. Not applied to 
 # sidebar selections above or the browser scroll position.
 @st.fragment(run_every="30s")
 def render_dashboard(selected_state, selected_district, selected_mode):
-    st.caption(f"Auto-refreshing every 30s — last updated {datetime.now().strftime('%H:%M:%S')}")
+    st.caption(f"Auto-refreshing every 30s, last updated {datetime.now().strftime('%H:%M:%S')}")
 
     mode_clause = "AND route_type_label = ?" if selected_mode != "All Modes" else ""
     mode_params = [selected_mode] if selected_mode != "All Modes" else []
@@ -203,7 +203,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         if len(dark_agencies):
             st.warning(
                 f"{len(dark_agencies)} of {len(coverage_df)} agencies have scheduled trips but "
-                "**no realtime signal** in the trailing 24h — their stops mean 'no data', not "
+                "**no realtime signal** in the trailing 24h, their stops mean 'no data', not "
                 "'on time'. See the Coverage tab for the full list."
             )
 
@@ -298,7 +298,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                     )
                     zoom = 7.5
                 else:
-                    st.info("No polygon level below district — showing points instead for this drill-down.")
+                    st.info("No polygon level below district, showing points instead for this drill-down.")
 
             if choropleth_df is not None:
                 st.caption(f"{len(choropleth_df)} regions.")
@@ -326,7 +326,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                         },
                     ))
             else:
-                # Points — also the fallback when Choropleth has no polygon level
+                # Points, also the fallback when Choropleth has no polygon level
                 # to show (municipality drill-down). Queried live from
                 # int_trip_delays_enriched (not the pre-materialized marts) so
                 # the mode filter applies here too.
@@ -407,7 +407,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         # --- Performance (state -> district -> municipality drill-down) ---
         with tab_performance:
             st.caption(
-                "Average alone can mislead for high-volume areas — a large majority of "
+                "Average alone can mislead for high-volume areas, a large majority of "
                 "on-time trips pulls it toward zero even when a real tail is badly delayed. "
                 "Median and p90 (90% of trips are within this many minutes) show the shape "
                 "instead of one number."
@@ -467,7 +467,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         with tab_mode:
             st.caption(
                 "Respects the state/district drill-down. Not filtered by the Mode selector "
-                "itself — this tab IS the cross-mode comparison, so restricting it to one "
+                "itself, this tab IS the cross-mode comparison, so restricting it to one "
                 "mode would defeat the point."
             )
             geo_where = []
@@ -512,7 +512,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         with tab_routes:
             st.caption(
                 "Respects the full sidebar (state/district/mode) plus the filters below. "
-                "Queried live, not from a pre-materialized mart — routes don't map to a "
+                "Queried live, not from a pre-materialized mart, routes don't map to a "
                 "single region, so a region filter has to recompute from raw observations."
             )
             route_agencies = conn.execute(
@@ -536,7 +536,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 row_limit = st.slider("Rows to show", 10, 200, 50, key="routes_limit")
             st.caption(
                 "\"Delayed % (confidence-adjusted)\" is a Wilson score lower bound, not the raw "
-                "percentage — a route with 21 observations at 100% delayed isn't actually as "
+                "percentage, a route with 21 observations at 100% delayed isn't actually as "
                 "certain to be bad as one with 5,000 at 95%; this shrinks small samples toward "
                 "uncertainty instead of taking the raw rate at face value."
             )
@@ -584,7 +584,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             st.caption(
                 "Respects the full sidebar (state/district/mode). A different question from the "
                 "Coverage tab: this asks 'how reliable is this agency's service', not 'does it "
-                "report realtime data at all' — only agencies with real observations appear here."
+                "report realtime data at all', only agencies with real observations appear here."
             )
             agc1, agc2 = st.columns(2)
             with agc1:
@@ -632,7 +632,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         # --- Trends: delay over polling history for the current selection ---
         with tab_trends:
             granularity = st.selectbox("Bucket by", ["minute", "hour", "day"], key="trends_granularity")
-            st.caption("Hour/day buckets will fill in as the realtime job accumulates more polling history — right now that's limited to how long ingestion has been running.")
+            st.caption("Hour/day buckets will fill in as the realtime job accumulates more polling history, right now that's limited to how long ingestion has been running.")
 
             where_clause = "WHERE 1=1"
             params = []
@@ -658,7 +658,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 st.info("No polling history for this selection yet.")
             elif len(trend_df) == 1:
                 st.info(
-                    "Only one polling snapshot so far — a trend line needs the realtime job "
+                    "Only one polling snapshot so far, a trend line needs the realtime job "
                     "(runs every minute) to accumulate more history."
                 )
                 st.dataframe(trend_df, width="stretch")
@@ -667,7 +667,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                                title="Average delay over time")
                 st.plotly_chart(fig, width="stretch")
 
-            # Distribution, not just a point estimate — this is what actually shows
+            # Distribution, not just a point estimate, this is what actually shows
             # whether "average ~0" means "everyone's on time" or "early trips and
             # late trips cancel out." Binned in SQL (not pulled row-by-row into
             # pandas): "All Germany" can be millions of rows, this always returns
@@ -695,7 +695,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
         # --- Disruptions: GTFS-RT service alerts, national (not stop/route-linkable) ---
         with tab_disruptions:
             st.caption(
-                "Not filtered by the sidebar, on purpose — not an oversight: route_ids/"
+                "Not filtered by the sidebar, on purpose, not an oversight: route_ids/"
                 "agency_ids are never populated in this feed (0 of 1.5M rows), and stop_ids "
                 "are populated on only ~0.7% of alerts (30 of 4,030 currently active). "
                 "Applying the region/mode filters here would hide 99%+ of alerts rather than "
@@ -705,10 +705,10 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 "Data quality note: this feed also (mis)uses the alerts mechanism for static "
                 "vehicle-amenity tags (e.g. 'Niederflur' = low-floor, 'Klimaanlage' = has A/C) "
                 "mixed in with genuine disruptions, and there's no reliable automatic way to tell "
-                "them apart from text alone — length and keywords both fail (e.g. 'Streckensperrung' "
+                "them apart from text alone, length and keywords both fail (e.g. 'Streckensperrung' "
                 "is a real 16-character closure notice; 'Linie RE7: Klimaanlage' is a 22-character "
                 "amenity note). An unambiguous legal-attribution boilerplate message (~77% of all "
-                "alert volume) is already excluded below; the rest is shown as-is — use search or "
+                "alert volume) is already excluded below; the rest is shown as-is, use search or "
                 "the keyword filter to narrow toward genuine disruptions."
             )
 
@@ -730,7 +730,7 @@ def render_dashboard(selected_state, selected_district, selected_mode):
                 search = st.text_input("Search alert text", key="alerts_search")
             with col2:
                 hide_amenities = st.checkbox(
-                    "Try to hide vehicle/amenity tags (heuristic keyword match — imperfect, may miss some or exclude real disruptions that happen to mention these words)",
+                    "Try to hide vehicle/amenity tags (heuristic keyword match, imperfect, may miss some or exclude real disruptions that happen to mention these words)",
                     key="alerts_hide_amenities",
                 )
 
@@ -765,12 +765,12 @@ def render_dashboard(selected_state, selected_district, selected_mode):
             st.subheader("Realtime Coverage by Agency (trailing 24h)")
             st.caption(
                 "0% coverage with scheduled trips > 0 means no realtime signal at all for that "
-                "agency — its stops are missing data, not performing well. Not filtered by the "
+                "agency, its stops are missing data, not performing well. Not filtered by the "
                 "Mode selector (one agency can run several modes)."
             )
             display_df = coverage_df
             if selected_state != "All Germany":
-                # scheduled_trip_count / rt_coverage_pct stay NATIONAL values — there's no
+                # scheduled_trip_count / rt_coverage_pct stay NATIONAL values, there's no
                 # stop_times.txt ingested to compute a true per-region scheduled baseline
                 # (deliberately excluded, see fetch_static_gtfs.py). This only restricts
                 # WHICH agencies are shown, to ones actually observed via RT in this region.

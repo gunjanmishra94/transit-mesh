@@ -1,6 +1,6 @@
 name: Admin boundaries refresh (manual)
 
-# BKG VG250 administrative boundaries update roughly annually — no schedule,
+# BKG VG250 administrative boundaries update roughly annually, no schedule,
 # same as orchestrator/definitions.py's admin_boundaries_job, which is
 # "manual trigger only" there too. Run this by hand from the Actions tab
 # when a new VG250 release comes out.
@@ -14,7 +14,7 @@ concurrency:
 env:
   DUCKDB_PATH: "md:transit_mesh"
   # GitHub Actions rejects env keys that only differ by case as duplicates,
-  # so only one casing can be set here — ingestion/duckdb_utils.py checks
+  # so only one casing can be set here, ingestion/duckdb_utils.py checks
   # both MOTHERDUCK_TOKEN and motherduck_token, so either works.
   MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
 
@@ -72,12 +72,12 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          echo "## dbt build — admin boundaries refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "## dbt build, admin boundaries refresh" >> "$GITHUB_STEP_SUMMARY"
           if [ -f dbt_transit/target/run_results.json ]; then
             jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
               dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "(no run_results.json — the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
+            echo "(no run_results.json, the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Dump dbt log tail on failure

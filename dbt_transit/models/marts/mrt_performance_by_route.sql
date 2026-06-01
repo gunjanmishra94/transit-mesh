@@ -6,7 +6,7 @@
 -- distinguishes "reliably 5min late" from "swings between -5 and +30" at
 -- an equal average. delayed_pct_wilson_lower_bound goes further than the
 -- observation floor: a route with 21 observations at 100% delayed isn't
--- actually as certain to be bad as one with 5,000 at 95% — the Wilson
+-- actually as certain to be bad as one with 5,000 at 95%, the Wilson
 -- lower bound shrinks small samples toward uncertainty instead of taking
 -- the raw percentage at face value.
 WITH route_stats AS (

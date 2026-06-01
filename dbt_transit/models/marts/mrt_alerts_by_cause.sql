@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 
--- Attribution notices excluded — see stg_rt__service_alerts for why they'd
+-- Attribution notices excluded, see stg_rt__service_alerts for why they'd
 -- otherwise dominate this breakdown (~77% of all distinct alert entities).
 WITH latest_feed AS (
     SELECT MAX(feed_timestamp) AS ts FROM {{ ref('stg_rt__service_alerts') }}

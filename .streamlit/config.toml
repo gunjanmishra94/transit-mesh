@@ -1,22 +1,22 @@
 # Theme built from the dataviz skill's validated reference palette
 # (references/palette.md), which validates BOTH a light and a dark column
-# for the categorical hues — so both are defined properly here, in
+# for the categorical hues, so both are defined properly here, in
 # [theme.light]/[theme.dark], rather than one fixed [theme].
 #
 # IMPORTANT: per Streamlit's own theming docs, the light/dark toggle in the
 # app's settings menu only appears if BOTH [theme.light] and [theme.dark]
-# are defined — a bare [theme] block locks the app to a single mode. (This
+# are defined, a bare [theme] block locks the app to a single mode. (This
 # is exactly what broke the light theme in an earlier version of this file
 # that only set [theme].)
 #
 # chartDivergingColors is left unset in both modes: the skill only defines
 # the diverging pair's two poles + neutral midpoint, not a validated
-# 10-step ramp (Streamlit requires exactly 10 colors here) — fabricating
+# 10-step ramp (Streamlit requires exactly 10 colors here), fabricating
 # one would violate the skill's own "compute, don't eyeball" rule, so this
 # falls back to Streamlit's own default diverging scale instead.
 
 [theme]
-# Shared across both modes — mode-invariant per the skill.
+# Shared across both modes, mode-invariant per the skill.
 font = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # Status colors (fixed, never themed per the skill) mapped onto Streamlit's
@@ -28,7 +28,7 @@ greenColor = "#0ca30c"   # good     -> st.success
 orangeColor = "#ec835a"  # serious  -> reserved for custom use
 
 # 10 steps from the validated blue sequential ramp (100->700), light to
-# dark, evenly thinned from the skill's 13-step table — same ramp for
+# dark, evenly thinned from the skill's 13-step table, same ramp for
 # both modes per the skill (only the categorical hues have separate
 # light/dark columns).
 chartSequentialColors = [

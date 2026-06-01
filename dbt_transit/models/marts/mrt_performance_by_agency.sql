@@ -2,7 +2,7 @@
 
 -- Distinct question from mrt_rt_coverage_by_agency: coverage asks "does this
 -- agency report realtime data at all", this asks "how reliable is that
--- agency's service" — only agencies with actual RT observations appear here,
+-- agency's service", only agencies with actual RT observations appear here,
 -- which is correct (there's nothing to score for a dark agency).
 SELECT
     agency_id,

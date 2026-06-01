@@ -34,7 +34,7 @@ LEFT JOIN {{ ref('stg_gtfs__stops') }} s ON t.stop_id = s.stop_id
 
 -- Excludes a day-boundary/midnight-rollover bug found on Verkehrsverbund
 -- Rhein-Sieg route 10930: 141 observations at exactly -1440.0min and 141 at
--- -1439.5min (i.e. -24h, almost to the second) — the unmistakable signature
+-- -1439.5min (i.e. -24h, almost to the second), the unmistakable signature
 -- of a date mismatch, not a real delay. No real-world transit delay is
 -- legitimately within a minute of a full day; 12h is a generous cutoff that
 -- clears this artifact while still passing genuinely severe real disruptions.

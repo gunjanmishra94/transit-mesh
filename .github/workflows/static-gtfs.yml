@@ -3,11 +3,11 @@ name: Static GTFS refresh
 # Daily nationwide static GTFS snapshot + stop-boundary enrichment + dbt
 # build against MotherDuck. Mirrors orchestrator/definitions.py's
 # `static_gtfs_job` (static_gtfs_asset + stg_gtfs_stops_enriched_asset + dbt
-# build) — deliberately does NOT touch admin boundaries (see
+# build), deliberately does NOT touch admin boundaries (see
 # admin-boundaries.yml), same split as the Dagster job it replaces.
 on:
   schedule:
-    # 03:17, not 03:00 — offset off the hour to avoid the traffic spike of
+    # 03:17, not 03:00, offset off the hour to avoid the traffic spike of
     # everyone else's midnight/top-of-hour cron jobs on shared runners.
     - cron: "17 3 * * *"
   workflow_dispatch: {}
@@ -22,7 +22,7 @@ concurrency:
 env:
   DUCKDB_PATH: "md:transit_mesh"
   # GitHub Actions rejects env keys that only differ by case as duplicates,
-  # so only one casing can be set here — ingestion/duckdb_utils.py checks
+  # so only one casing can be set here, ingestion/duckdb_utils.py checks
   # both MOTHERDUCK_TOKEN and motherduck_token, so either works.
   MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
 
@@ -80,12 +80,12 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          echo "## dbt build — static GTFS refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "## dbt build, static GTFS refresh" >> "$GITHUB_STEP_SUMMARY"
           if [ -f dbt_transit/target/run_results.json ]; then
             jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
               dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "(no run_results.json — the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
+            echo "(no run_results.json, the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Dump dbt log tail on failure

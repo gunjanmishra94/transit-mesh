@@ -11,7 +11,7 @@ CACHE_DIR = os.getenv("GTFS_STATIC_CACHE_DIR", "ingestion/.cache/gtfs_static")
 ZIP_PATH = os.path.join(CACHE_DIR, "latest.zip")
 
 # Core GTFS tables needed for the staging models (blueprint §4.2).
-# stop_times.txt / shapes.txt are deliberately excluded — they are large
+# stop_times.txt / shapes.txt are deliberately excluded, they are large
 # and not required by the current dbt models.
 GTFS_FILES = ["agency.txt", "stops.txt", "routes.txt", "trips.txt", "calendar.txt"]
 

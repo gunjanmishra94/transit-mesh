@@ -13,7 +13,7 @@ ZIP_PATH = os.path.join(CACHE_DIR, "vg250.zip")
 GPKG_MEMBER = "vg250_ebenen_0101/DE_VG250.gpkg"
 
 # GF=4 selects the combined land+water polygon (one row per administrative
-# unit) — VG250 also ships border-only (GF=2) and water-only (GF=3) variants
+# unit), VG250 also ships border-only (GF=2) and water-only (GF=3) variants
 # of the same units, which would otherwise duplicate rows.
 LAYERS = {
     "vg250_lan": "raw_vg250_states",
@@ -25,14 +25,14 @@ LAYERS = {
 def _download_attempt():
     # The ~67MB download has been observed dropping mid-stream (different
     # byte offset each time, consistent with a connection-duration limit
-    # rather than a fixed-size one) — resume via Range on retry instead of
+    # rather than a fixed-size one), resume via Range on retry instead of
     # restarting from scratch.
     existing_size = os.path.getsize(ZIP_PATH) if os.path.exists(ZIP_PATH) else 0
     headers = {"Range": f"bytes={existing_size}-"} if existing_size else {}
 
     with requests.get(VG250_URL, stream=True, timeout=180, headers=headers) as response:
         if response.status_code == 416:
-            # Requested range starts at/past the resource's end — the cached
+            # Requested range starts at/past the resource's end, the cached
             # file is already the complete download, nothing left to fetch.
             return
         if existing_size and response.status_code == 200:
@@ -81,7 +81,7 @@ def load_admin_boundaries():
 
     row_counts = {}
     for source_layer, table_name in LAYERS.items():
-        # geom is UTM32s (EPSG:25832), matching the source file — transform
+        # geom is UTM32s (EPSG:25832), matching the source file, transform
         # to WGS84 happens at the point-in-polygon join with GTFS stops.
         conn.execute(f"""
             CREATE OR REPLACE TABLE {table_name} AS

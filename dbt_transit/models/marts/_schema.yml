@@ -11,17 +11,17 @@ models:
         # bus running genuinely ~80min early), not a smoothed average.
         # RESOLVED: the Ruppichteroth (Rhein-Sieg) anomaly that used to
         # require a +-600min sanity ceiling here was a day-boundary/midnight-
-        # rollover bug on VRS route 10930 — 141 observations at exactly
+        # rollover bug on VRS route 10930, 141 observations at exactly
         # -1440.0min and 141 at -1439.5min (i.e. -24h, almost to the second),
         # not a real delay. Filtered at the source in
         # int_trip_delays_enriched.sql (|delay| > 12h excluded).
-        # 2026-09-20: hit again, this time in the -180 to -195min band —
+        # 2026-09-20: hit again, this time in the -180 to -195min band,
         # VRS route 7666 (Bonn Bad Godesberg, trips 882511/510454) and DB
         # Regio Bayern route 8062 (Scharnitz, trip 546793) each reported a
         # sustained (stable across multiple polls, not a one-off blip)
         # arrival_delay_sec straight from the upstream GTFS-RT feed of
         # roughly -2h to -3.2h. arrival_delay_sec is passed through
-        # unmodified from the source feed (see stg_rt__trip_updates.sql) —
+        # unmodified from the source feed (see stg_rt__trip_updates.sql),
         # this isn't something our pipeline computes or can recompute, so
         # it's upstream trip-matching noise from these smaller regional
         # feeds, not a bug on our side. No clean signature like the -24h

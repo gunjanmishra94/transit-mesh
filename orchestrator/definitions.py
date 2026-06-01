@@ -91,11 +91,11 @@ if not dbt_manifest_path.exists():
 @dbt_assets(manifest=dbt_manifest_path)
 def dbt_transit_assets(context, dbt: DbtCliResource):
     # "build" (not "run") so the dbt tests dbt_assets exposes as asset checks
-    # actually execute — "run" only builds models and leaves them unevaluated.
+    # actually execute, "run" only builds models and leaves them unevaluated.
     yield from dbt.cli(["build"], context=context).stream()
 
 
-# Realtime is the frequent path — every-minute polling, matching the RT
+# Realtime is the frequent path, every-minute polling, matching the RT
 # feed's own ~10-30s update cadence.
 realtime_job = define_asset_job(
     "realtime_ingestion_job",
@@ -114,7 +114,7 @@ static_gtfs_job = define_asset_job(
 )
 static_gtfs_schedule = ScheduleDefinition(job=static_gtfs_job, cron_schedule="0 3 * * *")
 
-# VG250 boundaries update roughly annually — no cron schedule; trigger this
+# VG250 boundaries update roughly annually, no cron schedule; trigger this
 # job manually from the Dagster UI when a new VG250 release comes out.
 admin_boundaries_job = define_asset_job(
     "admin_boundaries_job",

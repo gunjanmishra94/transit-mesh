@@ -2,14 +2,14 @@ name: Realtime ingestion
 
 # GTFS-RT polling + dbt build against MotherDuck. Mirrors
 # orchestrator/definitions.py's `realtime_job` (raw_gtfs_rt_asset + dbt
-# build), which only runs locally under `dagster dev`/`dagster-daemon` — this
+# build), which only runs locally under `dagster dev`/`dagster-daemon`, this
 # is the free, always-on substitute for that schedule.
 #
 # Every 5 min (GitHub's technical minimum), not every 1 min like the local
 # Dagster schedule. Scheduled runs are still best-effort and can be
 # silently delayed/dropped under GitHub's platform load, and the
 # motherduck-writer concurrency lock below means a slow run pushes the
-# next one back — 5 min is a deliberate tradeoff of freshness against that
+# next one back, 5 min is a deliberate tradeoff of freshness against that
 # risk, not a guarantee of hitting it every time.
 on:
   schedule:
@@ -26,7 +26,7 @@ concurrency:
 env:
   DUCKDB_PATH: "md:transit_mesh"
   # GitHub Actions rejects env keys that only differ by case as duplicates,
-  # so only one casing can be set here — ingestion/duckdb_utils.py checks
+  # so only one casing can be set here, ingestion/duckdb_utils.py checks
   # both MOTHERDUCK_TOKEN and motherduck_token, so either works.
   MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
 
@@ -92,12 +92,12 @@ jobs:
         if: always()
         run: |
           set -euxo pipefail
-          echo "## dbt build — realtime ingestion" >> "$GITHUB_STEP_SUMMARY"
+          echo "## dbt build, realtime ingestion" >> "$GITHUB_STEP_SUMMARY"
           if [ -f dbt_transit/target/run_results.json ]; then
             jq -r '.results[] | "- \(.status): \(.unique_id) (\(.execution_time | floor)s)"' \
               dbt_transit/target/run_results.json >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "(no run_results.json — the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
+            echo "(no run_results.json, the run likely failed before dbt build started)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Dump dbt log tail on failure

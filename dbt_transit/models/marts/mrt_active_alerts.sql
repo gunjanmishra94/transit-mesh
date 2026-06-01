@@ -14,7 +14,7 @@ first_seen AS (
 deduped_latest AS (
     -- The upstream feed occasionally repeats the exact same entity_id twice
     -- within a single poll (observed: identical content both times, same
-    -- feed_timestamp and ingested_at) — collapse to one row rather than fail
+    -- feed_timestamp and ingested_at), collapse to one row rather than fail
     -- a uniqueness test on it.
     SELECT
         entity_id,

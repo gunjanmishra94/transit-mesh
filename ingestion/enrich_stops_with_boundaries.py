@@ -6,7 +6,7 @@ DB_PATH = os.getenv("DUCKDB_PATH", "duckdb_data/transit.duckdb")
 
 # VG250 municipality AGS codes are hierarchical: the first 5 digits of a
 # municipality's 8-digit AGS *are* its district's AGS, and the first 2
-# digits of that are the state code — so district/state can be derived
+# digits of that are the state code, so district/state can be derived
 # from the municipality match without two more spatial joins.
 ENRICH_STOPS_SQL = """
 CREATE OR REPLACE TABLE stg_gtfs_stops_enriched AS

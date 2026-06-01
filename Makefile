@@ -2,13 +2,13 @@
         dbt-deps dbt-build dbt-test pipeline dagster dagster-rt dagster-static \
         dagster-boundaries app
 
-# Defaults to a pinned absolute local path — not relative, since dbt's own
+# Defaults to a pinned absolute local path, not relative, since dbt's own
 # subprocess runs with cwd=dbt_transit/, so a relative value resolves against
 # the wrong directory for that step. `?=` only applies this default when
 # DUCKDB_PATH isn't already set in the calling environment, so CI (or anyone
 # deploying against MotherDuck) can `DUCKDB_PATH=md:transit_mesh make ...`
 # and have every target below honor it. This covers every target here EXCEPT
-# the dagster-* targets — Dagster's own CLI auto-loads .env from the
+# the dagster-* targets, Dagster's own CLI auto-loads .env from the
 # invocation directory instead, which is why `make setup` generates .env
 # with an absolute path too (see .env.example).
 export DUCKDB_PATH ?= $(CURDIR)/duckdb_data/transit.duckdb
@@ -35,7 +35,7 @@ setup:
 	test -f .env || printf 'DUCKDB_PATH=%s/duckdb_data/transit.duckdb\n' "$(CURDIR)" > .env
 
 # Run as `-m ingestion.x` (module mode, from repo root), not `python
-# ingestion/x.py` (script mode) — orchestrator/definitions.py already imports
+# ingestion/x.py` (script mode), orchestrator/definitions.py already imports
 # these as `ingestion.x`, and duckdb_utils.py is a cross-file import within
 # the package, which only resolves in module mode.
 fetch-static:

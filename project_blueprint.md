@@ -42,23 +42,23 @@
 
 | Layer | Source | URL | Format | License | Cadence | Registration |
 |---|---|---|---|---|---|---|
-| Realtime (national) | gtfs.de realtime mirror | `https://realtime.gtfs.de/realtime-free.pb` | GTFS-RT protobuf (TripUpdates + ServiceAlerts only — no VehiclePositions) | CC BY-SA 4.0 (+ per-agency) | ~every 10–30s | None |
+| Realtime (national) | gtfs.de realtime mirror | `https://realtime.gtfs.de/realtime-free.pb` | GTFS-RT protobuf (TripUpdates + ServiceAlerts only, no VehiclePositions) | CC BY-SA 4.0 (+ per-agency) | ~every 10–30s | None |
 | Static GTFS (national baseline) | gtfs.de / DELFI NeTEx→GTFS conversion | `https://download.gtfs.de/germany/free/latest.zip` | GTFS ZIP (~280MB, ~1.9M trips / ~673K stops) | CC BY-SA 4.0 | Daily | None |
-| Static GTFS (regional patch/cross-check) | opendata-oepnv.de feed directory | per-agency ZIPs — HVV, MVV, VRR, VVS, NVV, VBB, NWL, RNV, AVV, VRS | GTFS ZIP | Varies (agency, generally CC BY / DL-DE-BY) | Varies | None (for the static ZIPs) |
+| Static GTFS (regional patch/cross-check) | opendata-oepnv.de feed directory | per-agency ZIPs, HVV, MVV, VRR, VVS, NVV, VBB, NWL, RNV, AVV, VRS | GTFS ZIP | Varies (agency, generally CC BY / DL-DE-BY) | Varies | None (for the static ZIPs) |
 | Admin boundaries (Länder → Regierungsbezirke → Kreise → Gemeinden) | BKG VG250 | `https://gdz.bkg.bund.de/.../vg250-01-01.html` | Shapefile / GeoJSON / GML / WFS-WMS | DL-DE-BY-2.0 | ~Annual | None |
 | Supplementary geodata (stops, POIs, finer boundary geometry) | Geofabrik OSM extracts | `https://download.geofabrik.de/europe/germany.html` | `.osm.pbf` / Shapefile, per-Bundesland | ODbL 1.0 (attribution + share-alike on derived DBs) | Rolling | None |
 
-### 2.2 Realtime coverage — known gaps and how we handle them
+### 2.2 Realtime coverage, known gaps and how we handle them
 
 The `realtime-free.pb` feed aggregates 20+ agencies but is explicitly **not** complete: bus coverage is patchy in Rhein-Ruhr and Baden-Württemberg, Hamburg (Stadtwerke Hamburg) has open-license questions pending, and some border regions rely on partial CH/NL feeds. There is no VehiclePositions entity, only TripUpdates + ServiceAlerts.
 
 We do not paper over this. Instead:
 - The nationwide static GTFS feed (§2.1, row 2) is the completeness backbone for *structural* coverage (every stop/route/agency in the country exists in the dimension tables even where no RT signal ever arrives).
-- A dbt model (`mrt_rt_coverage_by_agency`) computes, per agency/region, the ratio of trips with any RT update in the trailing 24h vs. total scheduled trips from the static feed — surfacing "dark" regions in the Streamlit app rather than silently showing zero delay (which would read as "on time").
+- A dbt model (`mrt_rt_coverage_by_agency`) computes, per agency/region, the ratio of trips with any RT update in the trailing 24h vs. total scheduled trips from the static feed, surfacing "dark" regions in the Streamlit app rather than silently showing zero delay (which would read as "on time").
 
-### 2.3 Regional feeds — used for patching, not as a live-RT source
+### 2.3 Regional feeds, used for patching, not as a live-RT source
 
-Regional Verkehrsverbund **static** GTFS ZIPs are pulled periodically to cross-validate/patch stop metadata (names, accessibility flags, geometry) that may be stale or missing in the national conversion. Their **live** realtime/TRIAS APIs (e.g. VVS, RMV) require email/account registration and are explicitly excluded — only their static downloads are used.
+Regional Verkehrsverbund **static** GTFS ZIPs are pulled periodically to cross-validate/patch stop metadata (names, accessibility flags, geometry) that may be stale or missing in the national conversion. Their **live** realtime/TRIAS APIs (e.g. VVS, RMV) require email/account registration and are explicitly excluded, only their static downloads are used.
 
 ### 2.4 Administrative & spatial reference data
 
@@ -66,9 +66,9 @@ BKG's VG250 dataset provides all administrative levels in a single download, joi
 
 ### 2.5 Explicitly excluded (require registration despite appearing open)
 
-- **Mobilithek** / NAP.NRW (National Access Point) — account signup required.
-- **developers.deutschebahn.com** (DB API Marketplace) — client-ID registration required for any endpoint.
-- **VVS / RMV live TRIAS/RT APIs** — registration or email-contact required (their static GTFS ZIPs are fine and used instead).
+- **Mobilithek** / NAP.NRW (National Access Point), account signup required.
+- **developers.deutschebahn.com** (DB API Marketplace), client-ID registration required for any endpoint.
+- **VVS / RMV live TRIAS/RT APIs**, registration or email-contact required (their static GTFS ZIPs are fine and used instead).
 
 ### 2.6 New ingestion modules implied by this plan
 
@@ -83,7 +83,7 @@ Corresponding Dagster assets (`static_gtfs_asset`, `admin_boundaries_asset`) are
 
 ### 2.7 Reference data flagged for manual verification before use
 
-destatis.de / Zensus municipality population data and the DB InfraGO open-data portal were not independently confirmed as registration-free during this pass — treat as optional enrichment and verify access terms before wiring them into the pipeline.
+destatis.de / Zensus municipality population data and the DB InfraGO open-data portal were not independently confirmed as registration-free during this pass, treat as optional enrichment and verify access terms before wiring them into the pipeline.
 
 ---
 

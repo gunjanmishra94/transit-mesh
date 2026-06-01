@@ -20,7 +20,7 @@ def fetch_feed():
 
 
 def parse_trip_updates(feed, feed_timestamp, ingested_at):
-    # NB: this feed leaves TripDescriptor.route_id empty on every entity —
+    # NB: this feed leaves TripDescriptor.route_id empty on every entity,
     # route/agency must be resolved downstream via a join on trip_id against
     # the static GTFS trips.txt, not read directly off the RT feed.
     records = []

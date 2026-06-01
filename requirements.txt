@@ -1,7 +1,7 @@
 # For Streamlit Community Cloud only, which installs from requirements.txt
 # via pip, not from pyproject.toml/uv.lock. Scoped to what app/main.py (and
 # its one internal import, ingestion.duckdb_utils) actually needs at
-# runtime — not the full pipeline stack (dagster, gtfs-realtime-bindings,
+# runtime, not the full pipeline stack (dagster, gtfs-realtime-bindings,
 # etc.) in pyproject.toml, which Streamlit Cloud never runs.
 streamlit>=1.36.0
 duckdb>=1.0.0
