@@ -2,7 +2,7 @@
 
 Spatial-temporal data platform tracking German public transport from country level down to village/stop level, built on GTFS-RT and static GTFS feeds.
 
-**Stack:** DuckDB · dbt-duckdb · Dagster · Streamlit (PyDeck + Plotly)
+**Stack:** Python · SQL · DuckDB · MotherDuck · dbt · Dagster · Streamlit (PyDeck + Plotly) · GitHub Actions
 
 ## Run locally
 
