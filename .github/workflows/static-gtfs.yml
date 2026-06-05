@@ -6,6 +6,13 @@ name: Static GTFS refresh
 # build), deliberately does NOT touch admin boundaries (see
 # admin-boundaries.yml), same split as the Dagster job it replaces.
 on:
+  # Primary trigger is repository_dispatch: a Cloudflare Worker
+  # (../../cron-trigger) fires a "static-gtfs-refresh" event daily at 03:17
+  # via GitHub's API. The native `schedule:` cron below is kept as a same-day
+  # fallback in case the Worker goes down, GitHub's schedule trigger was
+  # observed running this job over 5 hours late on this repo.
+  repository_dispatch:
+    types: [static-gtfs-refresh]
   schedule:
     # 03:17, not 03:00, offset off the hour to avoid the traffic spike of
     # everyone else's midnight/top-of-hour cron jobs on shared runners.

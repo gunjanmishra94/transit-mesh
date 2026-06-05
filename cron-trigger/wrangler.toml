@@ -1,0 +1,19 @@
+# Cloudflare Worker that stands in for GitHub's own `schedule:` trigger,
+# which is documented (and observed on this repo) to silently delay or drop
+# events by hours under platform load, especially at 5-minute granularity.
+# Cloudflare Cron Triggers fire reliably; this Worker just turns each one
+# into a `repository_dispatch` POST, which GitHub Actions treats as an
+# immediate external event rather than a queued schedule evaluation.
+#
+# See ../.github/workflows/rt-ingestion.yml and static-gtfs.yml for the
+# repository_dispatch event_type each cron below maps to (src/index.js).
+name = "transit-mesh-cron-trigger"
+main = "src/index.js"
+compatibility_date = "2026-09-20"
+
+# Cron-only Worker, no fetch handler, so the public workers.dev route
+# Cloudflare enables by default serves no purpose here.
+workers_dev = false
+
+[triggers]
+crons = ["*/5 * * * *", "17 3 * * *"]

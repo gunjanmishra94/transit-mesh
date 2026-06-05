@@ -19,4 +19,4 @@ make app        # launch the Streamlit dashboard
 ## Deployed
 
 - **Dashboard:** [transitmesh-de.streamlit.app](https://transitmesh-de.streamlit.app/)
-- **Pipeline runs (GitHub Actions):** [github.com/gunjanmishra94/transit-mesh/actions](https://github.com/gunjanmishra94/transit-mesh/actions), realtime ingestion every 5 min, static GTFS refresh daily, both building on a shared [MotherDuck](https://motherduck.com) database.
+- **Pipeline runs (GitHub Actions):** [github.com/gunjanmishra94/transit-mesh/actions](https://github.com/gunjanmishra94/transit-mesh/actions), realtime ingestion every 5 min, static GTFS refresh daily, both building on a shared [MotherDuck](https://motherduck.com) database. Triggered by a small Cloudflare Worker (`cron-trigger/`) via `repository_dispatch`, since GitHub's native `schedule:` trigger is unreliable at this frequency — see `cron-trigger/README.md`.

@@ -5,15 +5,18 @@ name: Realtime ingestion
 # build), which only runs locally under `dagster dev`/`dagster-daemon`, this
 # is the free, always-on substitute for that schedule.
 #
-# Every 5 min (GitHub's technical minimum), not every 1 min like the local
-# Dagster schedule. Scheduled runs are still best-effort and can be
-# silently delayed/dropped under GitHub's platform load, and the
-# motherduck-writer concurrency lock below means a slow run pushes the
-# next one back, 5 min is a deliberate tradeoff of freshness against that
-# risk, not a guarantee of hitting it every time.
+# Primary trigger is repository_dispatch: a Cloudflare Worker
+# (../../cron-trigger) fires a "realtime-ingestion" event every 5 minutes
+# via GitHub's API. GitHub's own `schedule:` trigger is documented (and was
+# observed here, see cron-trigger/README.md) to silently delay or drop
+# events by hours at this frequency under platform load, so it's kept only
+# as an hourly fallback in case the Worker itself goes down, not as the
+# real cadence.
 on:
+  repository_dispatch:
+    types: [realtime-ingestion]
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 # All three pipeline workflows write to the same MotherDuck database.
