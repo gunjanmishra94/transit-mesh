@@ -20,12 +20,18 @@ in case this Worker itself goes down — see the `on:` block comments in
 
 ## One-time setup
 
-1. **Create a fine-grained GitHub PAT**, scoped to just this repository:
-   [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)
-   - Repository access: **Only select repositories** → `transit-mesh`
-   - Permissions: **Contents** → Read and write (this is what
-     `repository_dispatch` requires — there's no narrower "trigger a
-     workflow" permission)
+1. **Create a classic GitHub PAT** with the `public_repo` scope:
+   [github.com/settings/tokens/new](https://github.com/settings/tokens/new)
+   - Scope: **`public_repo`** only (not the full `repo` scope — this repo is
+     public, so `public_repo` is enough and doesn't grant access to private
+     repos)
+   - **Must be classic, not fine-grained.** Fine-grained PATs return a 403
+     ("Resource not accessible by personal access token") on
+     `repository_dispatch` for public repositories no matter what
+     permissions they're given — confirmed by hitting exactly that error
+     here. GitHub's docs note fine-grained tokens aren't supported for this
+     endpoint on public repos; classic `public_repo` is the only token type
+     that actually works.
    - No expiration shorter than you're willing to come back and rotate this
 
 2. **Authenticate wrangler** against your Cloudflare account:
@@ -64,7 +70,8 @@ gh run list --workflow=rt-ingestion.yml --json event,createdAt,conclusion \
 
 ## Rotating the PAT
 
-Fine-grained PATs expire. When it does, the Worker's dispatch calls start
-failing (visible via `wrangler tail` or Cloudflare's dashboard logs), and
-the workflows silently fall back to their hourly/daily native schedule
-until you repeat steps 1 and 3 above with a fresh token.
+Classic PATs expire on whatever schedule you set at creation. When it does,
+the Worker's dispatch calls start failing with a 401 (visible via
+`wrangler tail` or Cloudflare's dashboard logs), and the workflows silently
+fall back to their hourly/daily native schedule until you repeat steps 1
+and 3 above with a fresh token.
