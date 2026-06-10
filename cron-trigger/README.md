@@ -11,12 +11,21 @@ higher the frequency. On this repo, `rt-ingestion.yml`'s `*/5 * * * *`
 schedule was observed firing hours apart instead of every 5 minutes, and
 `static-gtfs.yml`'s daily `17 3 * * *` schedule ran over 5 hours late.
 
-Cloudflare Cron Triggers fire reliably. This Worker turns each one into a
-`repository_dispatch` POST to GitHub's API, which Actions treats as an
-immediate external event, not a queued schedule evaluation. The workflows'
-native `schedule:` blocks are kept as coarse fallbacks (hourly / same-day)
-in case this Worker itself goes down — see the `on:` block comments in
-`../.github/workflows/rt-ingestion.yml` and `static-gtfs.yml`.
+Cloudflare Cron Triggers fire reliably. This Worker turns a single 5-minute
+heartbeat — the finest interval Cloudflare supports — into `repository_dispatch`
+POSTs to GitHub's API, which Actions treats as an immediate external event,
+not a queued schedule evaluation. The workflows' native `schedule:` blocks
+are kept as coarse fallbacks (hourly / same-day) in case this Worker itself
+goes down — see the `on:` block comments in `../.github/workflows/rt-ingestion.yml`
+and `static-gtfs.yml`.
+
+Which jobs exist, whether each is enabled, and how often it actually fires
+(every tick, every 30 min, daily, ...) live in the `CRON_STATE` KV
+namespace, not in this Worker's code — see `src/index.js`. That state is
+managed by [cron-orchestrator](https://github.com/gunjanmishra94/cron-orchestrator),
+a separate app (React + Cloudflare Pages Functions) that reads/writes the
+same KV namespace, so toggling a job or changing its frequency takes effect
+on the next tick with no redeploy of this Worker.
 
 ## One-time setup
 
@@ -51,8 +60,10 @@ in case this Worker itself goes down — see the `on:` block comments in
    npx wrangler deploy
    ```
 
-That's it — no routes, no bindings beyond the one secret. The Worker only
-runs on its two Cron Triggers (`wrangler.toml`), never serves HTTP traffic.
+The Worker never serves HTTP traffic — it only runs on its one Cron Trigger
+(`wrangler.toml`) plus the `CRON_STATE` KV binding. Seed that KV namespace
+with the job list once (see cron-orchestrator's README for the shape), or
+manage jobs entirely through that app once it's deployed.
 
 ## Verifying it's working
 
