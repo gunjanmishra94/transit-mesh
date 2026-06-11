@@ -1,7 +1,7 @@
 # Cloudflare Worker that stands in for GitHub's own `schedule:` trigger,
 # which is documented (and observed on this repo) to silently delay or drop
 # events by hours under platform load, especially at 5-minute granularity.
-# Cloudflare Cron Triggers fire reliably; this Worker turns a single 5-minute
+# Cloudflare Cron Triggers fire reliably; this Worker turns a single 1-minute
 # heartbeat into `repository_dispatch` POSTs, one per job whose interval
 # (read from the CRON_STATE KV namespace, shared with the cron-orchestrator
 # Pages app) is due. See src/index.js for the scheduling logic and
@@ -19,7 +19,7 @@ compatibility_date = "2026-09-20"
 workers_dev = false
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
 
 [[kv_namespaces]]
 binding = "CRON_STATE"

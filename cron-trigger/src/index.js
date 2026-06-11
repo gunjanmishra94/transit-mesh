@@ -1,21 +1,23 @@
-// Fires every 5 minutes (wrangler.toml), the finest interval Cloudflare
-// Cron Triggers support. Every other cadence (10 min, hourly, daily, ...)
-// is simulated by checking, per job, whether enough time has passed since
-// it last fired — so the cron-orchestrator app can change a job's
-// intervalMinutes or enabled flag in KV and have it take effect on the
-// very next tick, no redeploy of this Worker required.
+// Fires every 1 minute (wrangler.toml). Every other cadence (5 min,
+// hourly, daily, ...) is simulated by checking, per job, whether enough
+// time has passed since it last fired — so the cron-orchestrator app can
+// change a job's intervalMinutes or enabled flag in KV and have it take
+// effect on the very next tick, no redeploy of this Worker required.
 //
 // Job shape (KV key "jobs", a JSON array — see cron-orchestrator's
 // functions/api/jobs.ts for the source of truth on this shape):
 //   { id, name, repo, eventType, enabled, intervalMinutes, lastTriggeredAt }
 //
-// intervalMinutes should be a multiple of 5; a smaller value just means
-// "fire on every tick" since this Worker only ticks every 5 minutes.
+// A job with intervalMinutes: 1 fires on every tick, the fastest this
+// Worker can go. A job with a heavy per-run cost (e.g. a dbt build) set
+// this low can pile up a queue in GitHub Actions if runs take longer than
+// the interval, since the workflows' motherduck-writer concurrency group
+// queues overlapping runs rather than dropping them.
 
-// Ticks can land a few seconds early/late; without slack, a job whose
-// last run was (say) exactly 4m58s ago would be skipped for a full extra
-// interval instead of firing this tick.
-const DUE_SLACK_MS = 30_000;
+// Ticks can land a second or two early/late; without slack, a job whose
+// last run was, say, 59.5s ago (instead of a clean 60s) would be skipped
+// for a full extra interval instead of firing this tick.
+const DUE_SLACK_MS = 5_000;
 
 async function dispatch(repo, eventType, token) {
   const response = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
